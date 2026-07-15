@@ -1145,19 +1145,22 @@ createApp({
 
         const connectWs = () => {
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            ws = new WebSocket(`${protocol}//${location.host}/ws`);
-            ws.onopen = () => { wsConnected.value = true; };
-            ws.onclose = () => { wsConnected.value = false; setTimeout(connectWs, 3000); };
-            ws.onmessage = (e) => {
-                const data = JSON.parse(e.data);
-                if (data.type === 'screenshot_update') {
-                    const q = queries.value.find(q => q.id === data.query_id);
-                    if (q) {
-                        if (data.screenshot_type === 'text') q.text_screenshot_url = data.url;
-                        else q.ai_screenshot_url = data.url;
-                    }
-                } else if (data.type === 'data_refresh') { loadQueries(); }
-            };
+            try {
+                ws = new WebSocket(`${protocol}//${location.host}/ws`);
+                ws.onopen = () => { wsConnected.value = true; };
+                ws.onclose = () => { wsConnected.value = false; };
+                ws.onerror = () => { wsConnected.value = false; };
+                ws.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'screenshot_update') {
+                        const q = queries.value.find(q => q.id === data.query_id);
+                        if (q) {
+                            if (data.screenshot_type === 'text') q.text_screenshot_url = data.url;
+                            else q.ai_screenshot_url = data.url;
+                        }
+                    } else if (data.type === 'data_refresh') { loadQueries(); }
+                };
+            } catch(e) { wsConnected.value = false; }
         };
 
         // Test automation panel
