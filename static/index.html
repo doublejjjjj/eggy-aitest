@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搜索评测系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Header */
+        .header {
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid rgba(0,0,0,0.08);
+            padding: 14px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+        .header-actions { display: flex; gap: 10px; }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 980px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            letter-spacing: -0.01em;
+        }
+        .btn-primary { background: #0071e3; color: white; }
+        .btn-primary:hover { background: #0077ed; }
+        .btn-success { background: #34c759; color: white; }
+        .btn-success:hover { background: #30d158; }
+        .btn-outline { background: transparent; border: 1px solid #d2d2d7; color: #1d1d1f; }
+        .btn-outline:hover { background: #f5f5f7; border-color: #86868b; }
+        .btn-danger { background: #ff3b30; color: white; }
+        .btn-danger:hover { background: #ff453a; }
+
+        /* Sheet tabs */
+        .sheet-tabs { display: flex; align-items: center; gap: 2px; padding: 8px 32px 0; background: #f5f5f7; border-bottom: 1px solid #e8e8ed; }
+        .sheet-tab { padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 8px 8px 0 0; cursor: pointer; color: #86868b; background: transparent; border: 1px solid transparent; border-bottom: none; position: relative; display: flex; align-items: center; gap: 6px; transition: all 0.15s; }
+        .sheet-tab.active { background: white; color: #1d1d1f; border-color: #e8e8ed; box-shadow: 0 -1px 3px rgba(0,0,0,0.04); }
+        .sheet-tab:hover:not(.active) { background: rgba(0,0,0,0.04); }
+        .sheet-tab-close { font-size: 11px; color: #aaa; cursor: pointer; padding: 2px; border-radius: 3px; }
+        .sheet-tab-close:hover { color: #ff3b30; background: rgba(255,59,48,0.1); }
+        .sheet-tab-add { border: none; background: none; font-size: 18px; color: #86868b; cursor: pointer; padding: 4px 10px; border-radius: 6px; margin-left: 4px; }
+        .sheet-tab-add:hover { background: rgba(0,0,0,0.06); color: #1d1d1f; }
+
+        /* Clear dialog */
+        .clear-dialog {
+            background: white;
+            border-radius: 16px;
+            padding: 28px 32px;
+            width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .clear-dialog h3 { font-size: 18px; margin-bottom: 8px; }
+        .clear-dialog p { color: #48484a; font-size: 14px; margin-bottom: 12px; }
+        .clear-checkbox { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin: 16px 0; }
+        .clear-checkbox input { accent-color: #0071e3; width: 16px; height: 16px; }
+        .clear-hint { font-size: 12px; color: #86868b; margin-bottom: 20px; }
+        .clear-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+        /* Stats bar */
+        .stats {
+            padding: 10px 32px;
+            font-size: 13px;
+            color: #86868b;
+            background: #fff;
+            border-bottom: 1px solid rgba(0,0,0,0.04);
+        }
+
+        /* Table container */
+        .table-wrapper {
+            margin: 24px 32px;
+            overflow: auto;
+            max-height: calc(100vh - 140px);
+            -webkit-overflow-scrolling: touch;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+        }
+        .table-wrapper::-webkit-scrollbar { width: 8px; height: 8px; }
+        .table-wrapper::-webkit-scrollbar-track { background: transparent; }
+        .table-wrapper::-webkit-scrollbar-thumb { background: #c7c7cc; border-radius: 4px; }
+        .table-wrapper::-webkit-scrollbar-thumb:hover { background: #a1a1a6; }
+
+        /* Table */
+        table {
+            border-collapse: separate;
+            border-spacing: 0;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
+            font-size: 14px;
+            min-width: 2200px;
+            width: max-content;
+        }
+        thead { position: sticky; top: 0; z-index: 20; }
+        th {
+            background: #e8e8ed;
+            padding: 10px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: #48484a;
+            border-bottom: 1px solid #d2d2d7;
+            white-space: nowrap;
+            position: relative;
+            user-select: none;
+        }
+        td {
+            padding: 12px 16px;
+            border-bottom: 1px solid #f5f5f7;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        tr:last-child td { border-bottom: none; }
+        tbody tr { transition: background 0.15s ease; }
+        tbody tr:hover { background: #f5f5f7; }
+
+        /* Sticky columns: # and Query */
+        th:nth-child(1), td:nth-child(1) {
+            position: sticky;
+            left: 0;
+            z-index: 12;
+            min-width: 52px;
+            max-width: 52px;
+            width: 52px;
+        }
+        th:nth-child(2), td:nth-child(2) {
+            position: sticky;
+            left: 52px;
+            z-index: 12;
+            min-width: 200px;
+            box-shadow: 4px 0 6px -2px rgba(0,0,0,0.1);
+        }
+        td:nth-child(1),
+        td:nth-child(2) { background-color: #ffffff !important; }
+        tbody tr:hover td:nth-child(1),
+        tbody tr:hover td:nth-child(2) { background-color: #f5f5f7 !important; }
+        thead th:nth-child(1), thead th:nth-child(2) { z-index: 25; background-color: #e8e8ed !important; }
+
+        /* Column header - sort & filter */
+        .th-content {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            cursor: pointer;
+        }
+        .sort-icon { font-size: 10px; opacity: 0.4; }
+        .sort-icon.active { opacity: 1; color: #0071e3; }
+        .filter-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 4px;
+            font-size: 10px;
+            cursor: pointer;
+            opacity: 0.4;
+            transition: all 0.15s;
+        }
+        .filter-btn:hover, .filter-btn.active { opacity: 1; background: rgba(0,113,227,0.1); color: #0071e3; }
+
+        /* Filter dropdown */
+        .filter-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 180px;
+            max-height: 280px;
+            overflow-y: auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+            z-index: 50;
+            padding: 8px 0;
+            font-size: 13px;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .filter-dropdown label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            cursor: pointer;
+            color: #1d1d1f;
+        }
+        .filter-dropdown label:hover { background: #f5f5f7; }
+        .filter-dropdown input[type="checkbox"] { accent-color: #0071e3; }
+        .filter-actions {
+            display: flex;
+            gap: 6px;
+            padding: 8px 14px 4px;
+            border-top: 1px solid #f0f0f0;
+            margin-top: 4px;
+        }
+        .filter-actions button {
+            flex: 1;
+            padding: 5px 8px;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .filter-actions .f-apply { background: #0071e3; color: white; }
+        .filter-actions .f-clear { background: #f5f5f7; color: #1d1d1f; }
+
+        /* Editable cells */
+        .cell-editable {
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 8px;
+            min-height: 28px;
+            min-width: 40px;
+            display: inline-block;
+            transition: background 0.15s ease;
+        }
+        .cell-editable:hover { background: rgba(0,113,227,0.06); }
+        .cell-input {
+            padding: 6px 10px;
+            border: 2px solid #0071e3;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+        }
+        .cell-input[type="number"] { width: 60px; }
+        .cell-input[type="text"] { width: 100px; }
+
+        /* Auto-calc score */
+        .auto-score { color: #0071e3; font-weight: 600; font-size: 13px; }
+
+        /* Thumbnails */
+        .thumbnail {
+            width: 100px;
+            height: 56px;
+            object-fit: cover;
+            border-radius: 8px;
+            cursor: pointer;
+            border: 1px solid #e8e8ed;
+            transition: all 0.2s ease;
+        }
+        .thumbnail:hover { transform: scale(1.08); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay img { max-width: 90vw; max-height: 90vh; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+        .modal-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 48px;
+            color: white;
+            cursor: pointer;
+            width: 60px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 12px;
+            transition: background 0.2s;
+            user-select: none;
+        }
+        .modal-nav:hover { background: rgba(255,255,255,0.15); }
+        .modal-prev { left: 24px; }
+        .modal-next { right: 24px; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; right: 24px;
+            padding: 14px 24px;
+            background: #1d1d1f; color: white;
+            border-radius: 980px; font-size: 14px; font-weight: 500;
+            z-index: 999;
+            animation: slideUp 0.3s ease;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+        }
+        .toast.error { background: #ff3b30; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Upload area */
+        .upload-area {
+            margin: 0 32px 0; padding: 24px;
+            border: 2px dashed #d2d2d7; border-radius: 12px;
+            text-align: center; display: none; background: white;
+            transition: border-color 0.2s;
+        }
+        .upload-area:hover { border-color: #0071e3; }
+        .upload-area.show { display: block; margin-bottom: 0; }
+
+        /* Column settings panel */
+        .column-panel {
+            position: fixed;
+            top: 56px;
+            right: 32px;
+            width: 260px;
+            max-height: 70vh;
+            overflow-y: auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            z-index: 200;
+            padding: 12px 0;
+        }
+        .column-panel-header {
+            padding: 8px 16px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .column-panel-list { padding: 8px 0; }
+        .column-panel-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            cursor: grab;
+            transition: background 0.1s;
+            font-size: 13px;
+        }
+        .column-panel-item:hover { background: #f5f5f7; }
+        .column-panel-item.dragging { opacity: 0.4; background: #e8f0fe; }
+        .column-panel-item label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+        .column-panel-item input[type="checkbox"] { accent-color: #0071e3; }
+        .drag-handle { color: #86868b; font-size: 14px; cursor: grab; }
+
+        .no-screenshot { color: #86868b; font-size: 12px; }
+        .delete-btn { color: #ff3b30; cursor: pointer; font-size: 16px; opacity: 0.6; transition: opacity 0.15s; }
+        .delete-btn:hover { opacity: 1; }
+        .query-text { max-width: 240px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+        .query-text:hover { white-space: normal; overflow: visible; background: #fff9c4; border-radius: 4px; padding: 2px 4px; }
+        .row-num { color: #86868b; font-size: 12px; font-weight: 500; }
+
+        /* Search result column */
+        .search-result-cell { width: 300px; min-width: 300px; max-width: 300px; white-space: pre-wrap; word-break: break-all; }
+        .cell-editable-area {
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 8px;
+            min-height: 28px;
+            width: 100%;
+            white-space: pre-wrap;
+            word-break: break-all;
+            transition: background 0.15s ease;
+        }
+        .cell-editable-area:hover { background: rgba(0,113,227,0.06); }
+        .cell-textarea {
+            width: 100%;            min-height: 60px;
+            padding: 6px 10px;
+            border: 2px solid #0071e3;
+            border-radius: 8px;
+            font-size: 14px;
+            outline: none;
+            font-family: inherit;
+            resize: vertical;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <div style="display:flex;align-items:center;gap:24px">
+            <h1>搜索评测系统</h1>
+            <nav style="display:flex;gap:4px">
+                <a href="/" style="padding:6px 14px;border-radius:980px;background:#0071e3;color:white;text-decoration:none;font-size:13px;font-weight:500">数据管理</a>
+                <a href="/analysis" style="padding:6px 14px;border-radius:980px;color:#1d1d1f;text-decoration:none;font-size:13px;font-weight:500;border:1px solid #d2d2d7">可视化分析</a>
+            </nav>
+        </div>
+        <div class="header-actions">
+            <button class="btn" style="background:#5470c6;color:white" @click="openTestPanel">🚀 自动化测试</button>
+            <button class="btn btn-outline" @click="showColumnSettings = !showColumnSettings">列设置</button>
+            <button class="btn btn-primary" @click="showImport = !showImport">导入 Excel</button>
+            <button class="btn btn-success" @click="exportExcel">导出 Excel</button>
+            <button class="btn btn-outline" @click="exportCsv">导出 CSV</button>
+            <button class="btn btn-danger" @click="clearAll">清空数据</button>
+        </div>
+    </div>
+
+    <!-- Test Set Tabs -->
+    <div class="sheet-tabs">
+        <div class="sheet-tab" v-for="ts in testSets" :key="ts.id"
+             :class="{active: activeTestSet === ts.id}"
+             @click="switchTestSet(ts.id)"
+             @dblclick="renameTestSet(ts)">
+            {{ ts.name }}
+            <span v-if="testSets.length > 1" class="sheet-tab-close" @click.stop="deleteTestSet(ts.id)">✕</span>
+        </div>
+        <button class="sheet-tab-add" @click="createTestSet">+</button>
+    </div>
+
+    <!-- Column Settings Panel -->
+    <div class="column-panel" v-if="showColumnSettings" @click.stop>
+        <div class="column-panel-header">
+            <span>列显示设置</span>
+            <span style="font-size:12px;color:#86868b">拖拽排序 · 勾选显示</span>
+        </div>
+        <div class="column-panel-list">
+            <div v-for="(col, idx) in columns" :key="col.field" class="column-panel-item"
+                 draggable="true"
+                 @dragstart="onColDragStart(idx, $event)"
+                 @dragover.prevent="onColDragOver(idx)"
+                 @drop="onColDrop(idx)"
+                 :class="{dragging: dragColIdx === idx}">
+                <span class="drag-handle">⠿</span>
+                <label>
+                    <input type="checkbox" v-model="col.visible" @change="saveColumnSettings" />
+                    {{ col.label }}
+                </label>
+                <span v-if="col.field.startsWith('custom_')" @click="removeColumn(col.field)" style="margin-left:auto;cursor:pointer;color:#ff3b30;font-size:12px" title="删除此列">✕</span>
+            </div>
+        </div>
+        <div style="padding:10px 14px;border-top:1px solid #e8e8ed">
+            <div v-if="!showAddColumn" style="text-align:center">
+                <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" @click="showAddColumn = true">+ 新增列</button>
+            </div>
+            <div v-else style="display:flex;gap:6px;align-items:center">
+                <input v-model="newColLabel" placeholder="列名" style="flex:1;padding:5px 8px;border:1px solid #d2d2d7;border-radius:6px;font-size:12px" @keyup.enter="addColumn" />
+                <select v-model="newColType" style="padding:5px;border:1px solid #d2d2d7;border-radius:6px;font-size:12px">
+                    <option value="text">文本</option>
+                    <option value="number">数字</option>
+                </select>
+                <button class="btn btn-primary" style="font-size:12px;padding:5px 10px" @click="addColumn">添加</button>
+                <button class="btn btn-outline" style="font-size:12px;padding:5px 10px" @click="showAddColumn = false">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="stats">
+        共 {{ filteredQueries.length }} / {{ queries.length }} 条数据 &nbsp;·&nbsp; WebSocket {{ wsConnected ? '已连接' : '已断开' }}
+        <template v-if="Object.keys(activeFilters).length"> &nbsp;·&nbsp; <span style="color:#0071e3;cursor:pointer" @click="clearAllFilters">清除所有筛选</span></template>
+    </div>
+
+    <div class="upload-area" :class="{ show: showImport }">
+        <input type="file" accept=".xlsx,.xls" @change="importExcel" />
+        <p style="margin-top:10px;color:#86868b;font-size:13px;">选择 Excel 文件导入（重复 query 自动跳过）</p>
+    </div>
+
+    <div class="table-wrapper">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th v-for="col in visibleColumns" :key="col.field" :style="col.minWidth ? {minWidth: col.minWidth} : {}"
+                        :class="{'search-result-cell': col.field === 'search_result'}">
+                        <div class="th-content">
+                            <span @click="toggleSort(col.field)">{{ col.label }}</span>
+                            <span class="sort-icon" :class="{active: sortField === col.field}" @click="toggleSort(col.field)">
+                                {{ sortField === col.field ? (sortDir === 'asc' ? '▲' : '▼') : '▲' }}
+                            </span>
+                            <span class="filter-btn" :class="{active: activeFilters[col.field]}" @click.stop="openFilter(col.field)">⫶</span>
+                        </div>
+                        <div class="filter-dropdown" v-if="filterOpen === col.field" @click.stop>
+                            <label v-for="opt in getFilterOptions(col.field)" :key="opt">
+                                <input type="checkbox" :value="opt" v-model="tempFilter" />
+                                <span>{{ opt === '' ? '(空)' : opt }}</span>
+                            </label>
+                            <div class="filter-actions">
+                                <button class="f-clear" @click="clearFilter(col.field)">清除</button>
+                                <button class="f-apply" @click="applyFilter(col.field)">应用</button>
+                            </div>
+                        </div>
+                    </th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="(q, idx) in filteredQueries" :key="q.id">
+                    <td><span class="row-num">{{ idx + 1 }}</span></td>
+                    <template v-for="col in visibleColumns" :key="col.field">
+                        <!-- Query text -->
+                        <td v-if="col.field === 'query'"><span class="query-text" :title="q.query">{{ q.query }}</span></td>
+                        <!-- Search result (textarea) -->
+                        <td v-else-if="col.field === 'search_result'" class="search-result-cell">
+                            <editable-area :value="q.search_result" field="search_result" :id="q.id" @save="saveField" />
+                        </td>
+                        <!-- Screenshots -->
+                        <td v-else-if="col.field === 'text_screenshot_url'">
+                            <img v-if="q.text_screenshot_url" :src="q.text_screenshot_url" class="thumbnail" @click="showImage(q.text_screenshot_url)" />
+                            <span v-else class="no-screenshot">无截图</span>
+                        </td>
+                        <td v-else-if="col.field === 'ai_screenshot_url'">
+                            <img v-if="q.ai_screenshot_url" :src="q.ai_screenshot_url" class="thumbnail" @click="showImage(q.ai_screenshot_url)" />
+                            <span v-else class="no-screenshot">无截图</span>
+                        </td>
+                        <!-- AI score (auto-calc) -->
+                        <td v-else-if="col.field === 'ai_search_score'"><span class="auto-score">{{ calcAiScore(q) }}</span></td>
+                        <!-- Editable number fields -->
+                        <td v-else-if="col.editable === 'number'">
+                            <editable-cell :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField" type="number" />
+                        </td>
+                        <!-- Editable text fields -->
+                        <td v-else-if="col.editable === 'text'">
+                            <editable-cell :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField" />
+                        </td>
+                        <!-- Plain display -->
+                        <td v-else>{{ q[col.field] }}</td>
+                    </template>
+                    <td><span class="delete-btn" @click="deleteQuery(q.id)" title="删除">&#x2715;</span></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Image Modal with navigation -->
+    <div class="modal-overlay" v-if="modalImage" @click="modalImage = null">
+        <div class="modal-nav modal-prev" @click.stop="prevImage">‹</div>
+        <img :src="modalImage" @click.stop />
+        <div class="modal-nav modal-next" @click.stop="nextImage">›</div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast" v-if="toast" :class="{ error: toastError }">{{ toast }}</div>
+
+    <!-- Clear Confirm Dialog -->
+    <div class="modal-overlay" v-if="showClearDialog" @click.self="showClearDialog = false" style="z-index:1100">
+        <div class="clear-dialog">
+            <h3>确认清空数据</h3>
+            <p>将删除当前所有 {{ queries.length }} 条数据。</p>
+            <label class="clear-checkbox">
+                <input type="checkbox" v-model="skipBackup" />
+                无需备份
+            </label>
+            <p v-if="!skipBackup" class="clear-hint">默认会自动备份，7天内可恢复</p>
+            <p v-else class="clear-hint" style="color:#ff3b30">数据将直接删除，不可恢复！</p>
+            <div class="clear-actions">
+                <button class="btn btn-outline" @click="showClearDialog = false">取消</button>
+                <button class="btn btn-danger" @click="doClear">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Unknown Columns Dialog -->
+    <div class="modal-overlay" v-if="showUnknownDialog" @click.self="cancelImport" style="z-index:1100">
+        <div class="clear-dialog">
+            <h3>发现未识别的列</h3>
+            <p>以下列名不在系统字段中：</p>
+            <ul style="margin:12px 0;padding-left:20px;font-size:14px;color:#1d1d1f">
+                <li v-for="col in unknownColumns" :key="col" style="margin:4px 0">{{ col }}</li>
+            </ul>
+            <p class="clear-hint">可以忽略这些列继续导入，或取消后联系开发添加新字段。</p>
+            <div class="clear-actions">
+                <button class="btn btn-outline" @click="cancelImport">取消</button>
+                <button class="btn btn-primary" @click="importSkipUnknown">忽略并继续导入</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Panel -->
+    <div class="modal-overlay" v-if="showTestPanel" @click.self="showTestPanel = false" style="z-index:1100">
+        <div style="background:white;border-radius:16px;padding:28px;width:520px;max-height:80vh;overflow-y:auto">
+            <h3 style="font-size:18px;font-weight:600;margin-bottom:16px">🚀 自动化测试</h3>
+
+            <div v-if="!testRunning" style="background:#fff3cd;border:1px solid #ffc107;border-radius:10px;padding:14px;margin-bottom:16px;font-size:13px;line-height:1.7">
+                <strong>⚠️ 开始前请确认：</strong><br>
+                1. 蛋仔派对已打开并停留在<b>乐园搜索页</b><br>
+                2. 游戏窗口<b>最大化</b><br>
+                3. 测试期间 <b>F9=截图, F10=跳过, Ctrl+C=中止</b>
+            </div>
+
+            <div v-if="!testRunning" style="margin-bottom:16px">
+                <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+                    <label style="font-size:13px;font-weight:500;min-width:80px">当前断点:</label>
+                    <input type="number" v-model.number="testBreakpoint" style="width:80px;padding:6px 10px;border:1px solid #d2d2d7;border-radius:8px;font-size:14px" />
+                    <span style="font-size:12px;color:#86868b">（跳过 ID ≤ 此值的 query，0=从头开始）</span>
+                </div>
+                <div style="font-size:12px;color:#86868b">
+                    当前测试集: <b>{{ testSets.find(t => t.id === activeTestSet)?.name }}</b> · 待处理 query 将从此测试集读取
+                </div>
+            </div>
+
+            <div v-if="testRunning">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-weight:500">进度: {{ testStatus.current }}/{{ testStatus.total || '?' }}</span>
+                    <span style="font-size:12px;padding:3px 8px;border-radius:4px" :style="{background: testStatus.status==='running'?'#d4edda':'#f8d7da', color: testStatus.status==='running'?'#155724':'#721c24'}">{{ testStatus.status }}</span>
+                </div>
+                <div style="height:6px;background:#e8e8ed;border-radius:3px;margin-bottom:12px;overflow:hidden">
+                    <div style="height:100%;background:#5470c6;border-radius:3px;transition:width 0.3s" :style="{width: (testStatus.total ? testStatus.current/testStatus.total*100 : 0) + '%'}"></div>
+                </div>
+                <div style="background:#f5f5f7;border-radius:10px;padding:12px;max-height:200px;overflow-y:auto;font-size:11px;font-family:monospace;line-height:1.6" ref="testLogEl">
+                    <div v-for="(line, i) in testLogs.slice(-50)" :key="i">{{ line }}</div>
+                </div>
+            </div>
+
+            <div style="display:flex;gap:10px;margin-top:20px;justify-content:flex-end">
+                <button class="btn btn-outline" @click="showTestPanel = false">关闭</button>
+                <button v-if="!testRunning" class="btn" style="background:#5470c6;color:white" @click="startTest">▶ 开始测试</button>
+                <button v-if="testRunning" class="btn btn-danger" @click="stopTest">⏹ 停止</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- /end app -->
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted } = Vue;
+
+const EditableArea = {
+    props: ['value', 'field', 'id'],
+    emits: ['save'],
+    template: `
+        <div v-if="!editing" class="cell-editable-area" @click="startEdit" ref="display">{{ displayValue || '　' }}</div>
+        <textarea v-else class="cell-textarea" v-model="editValue" @blur="save" ref="input" :style="{height: areaHeight}"></textarea>
+    `,
+    setup(props, { emit }) {
+        const editing = ref(false);
+        const editValue = ref('');
+        const input = ref(null);
+        const display = ref(null);
+        const displayValue = ref(props.value ?? '');
+        const areaHeight = ref('60px');
+
+        const startEdit = () => {
+            if (display.value) {
+                areaHeight.value = Math.max(60, display.value.offsetHeight) + 'px';
+            }
+            editing.value = true;
+            editValue.value = props.value ?? '';
+            setTimeout(() => {
+                if (input.value) {
+                    input.value.focus();
+                    input.value.style.height = 'auto';
+                    input.value.style.height = input.value.scrollHeight + 'px';
+                }
+            }, 0);
+        };
+        const save = () => {
+            editing.value = false;
+            let val = editValue.value;
+            if (val !== props.value) {
+                emit('save', { id: props.id, field: props.field, value: val });
+                displayValue.value = val;
+            }
+        };
+        return { editing, editValue, input, display, displayValue, areaHeight, startEdit, save };
+    },
+    watch: { value(newVal) { this.displayValue = newVal ?? ''; } }
+};
+
+const EditableCell = {
+    props: ['value', 'field', 'id', 'type'],
+    emits: ['save'],
+    template: `
+        <div v-if="!editing" class="cell-editable" @click="startEdit">{{ displayValue }}</div>
+        <input v-else class="cell-input" :type="type || 'text'" v-model="editValue" @blur="save" @keyup.enter="save" ref="input" />
+    `,
+    setup(props, { emit }) {
+        const editing = ref(false);
+        const editValue = ref('');
+        const input = ref(null);
+        const displayValue = ref(props.value ?? '');
+
+        const startEdit = () => {
+            editing.value = true;
+            editValue.value = props.value ?? '';
+            setTimeout(() => input.value?.focus(), 0);
+        };
+        const save = () => {
+            editing.value = false;
+            let val = editValue.value;
+            if (props.type === 'number' && val !== '') val = parseFloat(val);
+            if (val !== props.value) {
+                emit('save', { id: props.id, field: props.field, value: val });
+                displayValue.value = val;
+            }
+        };
+        return { editing, editValue, input, displayValue, startEdit, save };
+    },
+    watch: { value(newVal) { this.displayValue = newVal ?? ''; } }
+};
+
+createApp({
+    components: { EditableCell, EditableArea },
+    setup() {
+        const queries = ref([]);
+        const modalImage = ref(null);
+        const toast = ref('');
+        const toastError = ref(false);
+        const showImport = ref(false);
+        const wsConnected = ref(false);
+        let ws = null;
+
+        // Test sets
+        const testSets = ref([]);
+        const activeTestSet = ref(1);
+
+        // Sort state (persisted)
+        const savedSort = JSON.parse(localStorage.getItem('sort_settings') || '{}');
+        const sortField = ref(savedSort.field || '');
+        const sortDir = ref(savedSort.dir || 'asc');
+
+        // Filter state
+        const activeFilters = ref({});
+        const filterOpen = ref(null);
+        const tempFilter = ref([]);
+
+        const DEFAULT_COLUMNS = [
+            { field: 'query', label: 'Query', minWidth: '200px', visible: true },
+            { field: 'query_length', label: '长度', visible: true },
+            { field: 'business_category', label: '业务分类', visible: true, editable: 'text' },
+            { field: 'search_count', label: '搜索次数', visible: true },
+            { field: 'is_short_query', label: 'Query层级', visible: true },
+            { field: 'frequency_level', label: '频率层级', visible: true },
+            { field: 'original_group', label: '原始分组', visible: true },
+            { field: 'search_result', label: '搜索结果', visible: true },
+            { field: 'text_screenshot_url', label: '文本搜截图', visible: true },
+            { field: 'ai_screenshot_url', label: 'AI搜截图', visible: true },
+            { field: 'relevance', label: '相关性', visible: true, editable: 'number' },
+            { field: 'accuracy', label: '准确性', visible: true, editable: 'number' },
+            { field: 'ranking', label: '排序合理性', visible: true, editable: 'number' },
+            { field: 'diversity', label: '多样性', visible: true, editable: 'number' },
+            { field: 'quality_threshold', label: '质量门槛', visible: true, editable: 'number' },
+            { field: 'copy_recommendation', label: '文案/推荐语', visible: true, editable: 'number' },
+            { field: 'click_desire', label: '点击欲望', visible: true, editable: 'number' },
+            { field: 'vs_text_search', label: 'vs文本搜', visible: true, editable: 'text' },
+            { field: 'ai_search_score', label: 'AI搜综合分', visible: true },
+        ];
+
+        // Custom columns (loaded from API)
+        const customColumns = ref([]);
+
+        // Load saved column settings from localStorage
+        const loadColumnSettings = (extraCols = []) => {
+            const allDefaults = [...DEFAULT_COLUMNS, ...extraCols];
+            try {
+                const saved = localStorage.getItem('column_settings');
+                if (!saved) return allDefaults;
+                const savedArr = JSON.parse(saved);
+                const defaultMap = {};
+                allDefaults.forEach(c => { defaultMap[c.field] = c; });
+                const merged = savedArr
+                    .filter(s => defaultMap[s.field])
+                    .map(s => ({ ...defaultMap[s.field], visible: s.visible }));
+                const savedFields = new Set(savedArr.map(s => s.field));
+                allDefaults.forEach(c => {
+                    if (!savedFields.has(c.field)) merged.push(c);
+                });
+                return merged;
+            } catch { return allDefaults; }
+        };
+
+        const columns = ref(loadColumnSettings());
+
+        // Load custom columns from API and merge
+        const loadCustomColumns = async () => {
+            try {
+                const resp = await fetch('/api/custom-columns');
+                customColumns.value = await resp.json();
+                const extraCols = customColumns.value.map(c => ({
+                    field: c.field, label: c.label, visible: true,
+                    editable: c.type === 'number' ? 'number' : 'text'
+                }));
+                columns.value = loadColumnSettings(extraCols);
+            } catch {}
+        };
+
+        // Add new custom column
+        const showAddColumn = ref(false);
+        const newColLabel = ref('');
+        const newColType = ref('text');
+
+        const addColumn = async () => {
+            if (!newColLabel.value.trim()) return;
+            try {
+                const resp = await fetch('/api/custom-columns', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ label: newColLabel.value.trim(), type: newColType.value })
+                });
+                if (!resp.ok) { const e = await resp.json(); alert(e.detail); return; }
+                const col = await resp.json();
+                columns.value.push({ field: col.field, label: col.label, visible: true, editable: col.type === 'number' ? 'number' : 'text' });
+                saveColumnSettings();
+                newColLabel.value = '';
+                showAddColumn.value = false;
+                toast.value = `列 "${col.label}" 已添加`;
+            } catch(e) { alert('添加失败: ' + e.message); }
+        };
+
+        const removeColumn = async (field) => {
+            if (!confirm('确定删除此自定义列？')) return;
+            await fetch(`/api/custom-columns/${field}`, { method: 'DELETE' });
+            columns.value = columns.value.filter(c => c.field !== field);
+            saveColumnSettings();
+        };
+
+        // Save column settings whenever they change
+        const saveColumnSettings = () => {
+            const data = columns.value.map(c => ({ field: c.field, visible: c.visible }));
+            localStorage.setItem('column_settings', JSON.stringify(data));
+        };
+
+        const visibleColumns = computed(() => columns.value.filter(c => c.visible));
+        const showColumnSettings = ref(false);
+        const dragColIdx = ref(null);
+
+        const onColDragStart = (idx, e) => {
+            dragColIdx.value = idx;
+            e.dataTransfer.effectAllowed = 'move';
+        };
+        const onColDragOver = (idx) => {
+            if (dragColIdx.value === null || dragColIdx.value === idx) return;
+            const item = columns.value.splice(dragColIdx.value, 1)[0];
+            columns.value.splice(idx, 0, item);
+            dragColIdx.value = idx;
+            saveColumnSettings();
+        };
+        const onColDrop = () => { dragColIdx.value = null; saveColumnSettings(); };
+
+        // Compute AI score = average of scoring fields
+        const SCORE_FIELDS = ['relevance', 'accuracy', 'ranking', 'diversity', 'quality_threshold', 'click_desire'];
+        const calcAiScore = (q) => {
+            const vals = SCORE_FIELDS.map(f => q[f]).filter(v => v != null && v !== '');
+            if (vals.length === 0) return '-';
+            const avg = vals.reduce((a, b) => a + Number(b), 0) / vals.length;
+            return avg.toFixed(2);
+        };
+
+        // Filtered + sorted
+        const filteredQueries = computed(() => {
+            let result = [...queries.value];
+            // Apply filters
+            for (const [field, allowed] of Object.entries(activeFilters.value)) {
+                if (allowed && allowed.length > 0) {
+                    result = result.filter(q => {
+                        const val = q[field] == null ? '' : String(q[field]);
+                        return allowed.includes(val);
+                    });
+                }
+            }
+            // Apply sort
+            if (sortField.value) {
+                result.sort((a, b) => {
+                    let va = a[sortField.value] ?? '';
+                    let vb = b[sortField.value] ?? '';
+                    if (typeof va === 'number' && typeof vb === 'number') {
+                        return sortDir.value === 'asc' ? va - vb : vb - va;
+                    }
+                    va = String(va); vb = String(vb);
+                    const cmp = va.localeCompare(vb, 'zh');
+                    return sortDir.value === 'asc' ? cmp : -cmp;
+                });
+            }
+            return result;
+        });
+
+        const toggleSort = (field) => {
+            if (sortField.value === field) {
+                if (sortDir.value === 'asc') sortDir.value = 'desc';
+                else { sortField.value = ''; sortDir.value = 'asc'; }
+            } else {
+                sortField.value = field;
+                sortDir.value = 'asc';
+            }
+            localStorage.setItem('sort_settings', JSON.stringify({ field: sortField.value, dir: sortDir.value }));
+        };
+
+        const getFilterOptions = (field) => {
+            const vals = new Set(queries.value.map(q => q[field] == null ? '' : String(q[field])));
+            return [...vals].sort();
+        };
+
+        const openFilter = (field) => {
+            if (filterOpen.value === field) { filterOpen.value = null; return; }
+            filterOpen.value = field;
+            tempFilter.value = activeFilters.value[field] ? [...activeFilters.value[field]] : [];
+        };
+
+        const applyFilter = (field) => {
+            if (tempFilter.value.length > 0) {
+                activeFilters.value[field] = [...tempFilter.value];
+            } else {
+                delete activeFilters.value[field];
+            }
+            activeFilters.value = { ...activeFilters.value };
+            filterOpen.value = null;
+        };
+
+        const clearFilter = (field) => {
+            delete activeFilters.value[field];
+            activeFilters.value = { ...activeFilters.value };
+            tempFilter.value = [];
+            filterOpen.value = null;
+        };
+
+        const clearAllFilters = () => {
+            activeFilters.value = {};
+            filterOpen.value = null;
+        };
+
+        // Close filter on outside click
+        document.addEventListener('click', () => { filterOpen.value = null; });
+
+        const showToast = (msg, isError = false) => {
+            toast.value = msg;
+            toastError.value = isError;
+            setTimeout(() => { toast.value = ''; }, 3000);
+        };
+
+        const loadQueries = async () => {
+            const res = await fetch(`/api/queries?test_set_id=${activeTestSet.value}`);
+            queries.value = await res.json();
+        };
+
+        const loadTestSets = async () => {
+            const res = await fetch('/api/test-sets');
+            testSets.value = await res.json();
+            if (testSets.value.length && !testSets.value.find(t => t.id === activeTestSet.value)) {
+                activeTestSet.value = testSets.value[0].id;
+            }
+        };
+
+        const switchTestSet = (id) => {
+            activeTestSet.value = id;
+            localStorage.setItem('active_test_set', id);
+            loadQueries();
+        };
+
+        const createTestSet = async () => {
+            const name = prompt('输入新测试集名称：', `测试集 ${testSets.value.length + 1}`);
+            if (!name) return;
+            const copyFrom = confirm('是否从当前测试集复制 Query（清空评分/截图）？') ? activeTestSet.value : null;
+            const res = await fetch('/api/test-sets', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, copy_from: copyFrom })
+            });
+            if (res.ok) {
+                const ts = await res.json();
+                await loadTestSets();
+                switchTestSet(ts.id);
+                toast.value = `已创建: ${name}`;
+            }
+        };
+
+        const renameTestSet = async (ts) => {
+            const name = prompt('重命名测试集：', ts.name);
+            if (!name || name === ts.name) return;
+            await fetch(`/api/test-sets/${ts.id}`, {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name })
+            });
+            ts.name = name;
+        };
+
+        const deleteTestSet = async (id) => {
+            if (!confirm('确定删除此测试集及其所有数据？不可恢复！')) return;
+            const res = await fetch(`/api/test-sets/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+                await loadTestSets();
+                if (activeTestSet.value === id) {
+                    switchTestSet(testSets.value[0].id);
+                }
+            } else {
+                const e = await res.json();
+                alert(e.detail);
+            }
+        };
+
+        const saveField = async ({ id, field, value }) => {
+            const body = {};
+            body[field] = value;
+
+            // Auto-calc AI score
+            const q = queries.value.find(q => q.id === id);
+            if (q && SCORE_FIELDS.includes(field)) {
+                const temp = { ...q, [field]: value };
+                const vals = SCORE_FIELDS.map(f => temp[f]).filter(v => v != null && v !== '');
+                if (vals.length > 0) {
+                    body.ai_search_score = parseFloat((vals.reduce((a, b) => a + Number(b), 0) / vals.length).toFixed(2));
+                }
+            }
+
+            const res = await fetch(`/api/queries/${id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            if (res.ok) {
+                const updated = await res.json();
+                const idx = queries.value.findIndex(q => q.id === id);
+                if (idx >= 0) queries.value[idx] = updated;
+                showToast('已保存');
+            } else {
+                showToast('保存失败', true);
+            }
+        };
+
+        const deleteQuery = async (id) => {
+            if (!confirm('确定删除？')) return;
+            await fetch(`/api/queries/${id}`, { method: 'DELETE' });
+            queries.value = queries.value.filter(q => q.id !== id);
+            showToast('已删除');
+        };
+
+        const importFile = ref(null);
+
+        const importExcel = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            importFile.value = file;
+            await doImport(file, false);
+        };
+
+        const doImport = async (file, skipUnknown) => {
+            const formData = new FormData();
+            formData.append('file', file);
+            let url = `/api/import?test_set_id=${activeTestSet.value}`;
+            if (skipUnknown) url += '&skip_unknown=1';
+            const res = await fetch(url, { method: 'POST', body: formData });
+            const result = await res.json();
+
+            if (result.needs_confirmation) {
+                unknownColumns.value = result.unknown_columns;
+                showUnknownDialog.value = true;
+                return;
+            }
+
+            if (result.error) {
+                showToast(result.error, true);
+                return;
+            }
+
+            let msg = `导入成功: ${result.imported} 条`;
+            if (result.duplicates_count > 0) {
+                msg += ` | 跳过 ${result.duplicates_count} 条重复`;
+                if (result.duplicates && result.duplicates.length > 0) {
+                    msg += `: ${result.duplicates.slice(0, 5).join(', ')}`;
+                    if (result.duplicates_count > 5) msg += '...';
+                }
+            }
+            showToast(msg);
+            showImport.value = false;
+            await loadQueries();
+        };
+
+        const unknownColumns = ref([]);
+        const showUnknownDialog = ref(false);
+
+        const importSkipUnknown = async () => {
+            showUnknownDialog.value = false;
+            if (importFile.value) {
+                await doImport(importFile.value, true);
+            }
+        };
+
+        const cancelImport = () => {
+            showUnknownDialog.value = false;
+            importFile.value = null;
+        };
+
+        const exportExcel = () => { window.location.href = '/api/export/excel'; };
+        const exportCsv = () => { window.location.href = '/api/export/csv'; };
+
+        const showClearDialog = ref(false);
+        const skipBackup = ref(false);
+
+        const clearAll = () => {
+            showClearDialog.value = true;
+            skipBackup.value = false;
+        };
+
+        const doClear = async () => {
+            showClearDialog.value = false;
+            let url = `/api/queries?test_set_id=${activeTestSet.value}`;
+            if (skipBackup.value) url += '&no_backup=1';
+            const res = await fetch(url, { method: 'DELETE' });
+            const result = await res.json();
+            queries.value = [];
+            if (result.backup) {
+                showToast(`已清空 ${result.deleted} 条（备份: ${result.backup}）`);
+            } else {
+                showToast(`已清空 ${result.deleted} 条数据`);
+            }
+        };
+        const showImage = (url) => {
+            modalImage.value = url;
+            // Build image list from visible data
+            allImages.value = [];
+            filteredQueries.value.forEach(q => {
+                if (q.text_screenshot_url) allImages.value.push(q.text_screenshot_url);
+                if (q.ai_screenshot_url) allImages.value.push(q.ai_screenshot_url);
+            });
+            modalIdx.value = allImages.value.indexOf(url);
+        };
+
+        const allImages = ref([]);
+        const modalIdx = ref(0);
+
+        const prevImage = () => {
+            if (allImages.value.length === 0) return;
+            modalIdx.value = (modalIdx.value - 1 + allImages.value.length) % allImages.value.length;
+            modalImage.value = allImages.value[modalIdx.value];
+        };
+        const nextImage = () => {
+            if (allImages.value.length === 0) return;
+            modalIdx.value = (modalIdx.value + 1) % allImages.value.length;
+            modalImage.value = allImages.value[modalIdx.value];
+        };
+
+        // Keyboard nav for modal
+        document.addEventListener('keydown', (e) => {
+            if (!modalImage.value) return;
+            if (e.key === 'ArrowLeft') prevImage();
+            else if (e.key === 'ArrowRight') nextImage();
+            else if (e.key === 'Escape') modalImage.value = null;
+        });
+
+        const connectWs = () => {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/ws`);
+            ws.onopen = () => { wsConnected.value = true; };
+            ws.onclose = () => { wsConnected.value = false; setTimeout(connectWs, 3000); };
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                if (data.type === 'screenshot_update') {
+                    const q = queries.value.find(q => q.id === data.query_id);
+                    if (q) {
+                        if (data.screenshot_type === 'text') q.text_screenshot_url = data.url;
+                        else q.ai_screenshot_url = data.url;
+                    }
+                } else if (data.type === 'data_refresh') { loadQueries(); }
+            };
+        };
+
+        // Test automation panel
+        const showTestPanel = ref(false);
+        const testRunning = ref(false);
+        const testBreakpoint = ref(0);
+        const testStatus = ref({ current: 0, total: 0, status: 'idle' });
+        const testLogs = ref([]);
+        const testLogEl = ref(null);
+        let testPollTimer = null;
+
+        const openTestPanel = async () => {
+            showTestPanel.value = true;
+            const res = await fetch('/api/test/status');
+            const data = await res.json();
+            testBreakpoint.value = data.breakpoint || 0;
+            testRunning.value = data.running;
+            testStatus.value = data;
+            testLogs.value = data.progress || [];
+            if (data.running) startPolling();
+        };
+
+        const startTest = async () => {
+            const res = await fetch('/api/test/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ breakpoint: testBreakpoint.value, test_set_id: activeTestSet.value })
+            });
+            if (!res.ok) { const e = await res.json(); alert(e.detail); return; }
+            testRunning.value = true;
+            testLogs.value = [];
+            startPolling();
+        };
+
+        const stopTest = async () => {
+            await fetch('/api/test/stop', { method: 'POST' });
+            testRunning.value = false;
+            stopPolling();
+            testStatus.value = { ...testStatus.value, status: 'stopped' };
+        };
+
+        const startPolling = () => {
+            stopPolling();
+            testPollTimer = setInterval(async () => {
+                const res = await fetch('/api/test/status');
+                const data = await res.json();
+                testStatus.value = data;
+                testLogs.value = data.progress || [];
+                testRunning.value = data.running;
+                testBreakpoint.value = data.breakpoint || 0;
+                if (!data.running) {
+                    stopPolling();
+                    loadQueries(); // refresh data after test completes
+                }
+                // Auto-scroll log
+                if (testLogEl.value) testLogEl.value.scrollTop = testLogEl.value.scrollHeight;
+            }, 1500);
+        };
+
+        const stopPolling = () => {
+            if (testPollTimer) { clearInterval(testPollTimer); testPollTimer = null; }
+        };
+
+        onMounted(async () => {
+            const savedSet = localStorage.getItem('active_test_set');
+            if (savedSet) activeTestSet.value = parseInt(savedSet);
+            await loadTestSets();
+            loadCustomColumns();
+            loadQueries();
+            connectWs();
+        });
+
+        return {
+            queries, filteredQueries, modalImage, toast, toastError, showImport, wsConnected,
+            columns, visibleColumns, showColumnSettings, dragColIdx, saveColumnSettings,
+            sortField, sortDir, activeFilters, filterOpen, tempFilter,
+            onColDragStart, onColDragOver, onColDrop,
+            toggleSort, getFilterOptions, openFilter, applyFilter, clearFilter, clearAllFilters,
+            calcAiScore, saveField, deleteQuery, clearAll, doClear, showClearDialog, skipBackup,
+            importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog,
+            exportExcel, exportCsv, showImage, prevImage, nextImage,
+            showAddColumn, newColLabel, newColType, addColumn, removeColumn,
+            testSets, activeTestSet, switchTestSet, createTestSet, renameTestSet, deleteTestSet,
+            showTestPanel, testRunning, testBreakpoint, testStatus, testLogs, testLogEl,
+            openTestPanel, startTest, stopTest
+        };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>可视化分析 - 搜索评测系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif; background: #f5f5f7; color: #1d1d1f; -webkit-font-smoothing: antialiased; }
+        .header { background: rgba(255,255,255,0.72); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 14px 32px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
+        .header h1 { font-size: 20px; font-weight: 600; }
+        .header-left { display: flex; align-items: center; gap: 24px; }
+        nav { display: flex; gap: 4px; }
+        nav a { padding: 6px 14px; border-radius: 980px; text-decoration: none; font-size: 13px; font-weight: 500; }
+        nav a.active { background: #0071e3; color: white; }
+        nav a:not(.active) { color: #1d1d1f; border: 1px solid #d2d2d7; }
+        .header-actions { display: flex; gap: 10px; }
+        .btn { padding: 8px 18px; border: none; border-radius: 980px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
+        .btn-primary { background: #0071e3; color: white; }
+        .btn-primary:hover { background: #0077ed; }
+        .btn-success { background: #34c759; color: white; }
+        .btn-outline { background: transparent; border: 1px solid #d2d2d7; color: #1d1d1f; }
+        .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        .container { padding: 24px 32px; max-width: 1400px; margin: 0 auto; }
+
+        /* Overview cards */
+        .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+        .card { background: white; border-radius: 16px; padding: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .card-label { font-size: 13px; color: #86868b; margin-bottom: 8px; }
+        .card-value { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; }
+        .card-value.blue { color: #5470c6; }
+        .card-value.green { color: #91cc75; }
+
+        /* Chart sections */
+        .section { background: white; border-radius: 16px; padding: 28px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .section-title { font-size: 18px; font-weight: 600; }
+        .section-body { display: grid; grid-template-columns: 1fr 320px; gap: 24px; }
+        .section-body.full { grid-template-columns: 1fr; }
+        .chart-container { height: 360px; }
+        .text-analysis { font-size: 14px; color: #48484a; line-height: 1.8; padding: 16px; background: #f5f5f7; border-radius: 12px; }
+        .text-analysis strong { color: #1d1d1f; }
+
+        /* AI analysis */
+        .ai-section { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 16px; padding: 28px; margin-bottom: 24px; color: #e0e0e0; }
+        .ai-section .section-title { color: white; }
+        .ai-content { font-size: 14px; line-height: 1.9; margin-top: 16px; min-height: 100px; }
+        .ai-content.loading { opacity: 0.7; }
+        .ai-content h3 { color: #7ec8e3; margin: 18px 0 8px; font-size: 16px; }
+        .ai-content h4 { color: #a8d8ea; margin: 14px 0 6px; font-size: 15px; }
+        .ai-content strong { color: #fff; }
+        .ai-content ul, .ai-content ol { padding-left: 20px; margin: 8px 0; }
+        .ai-content li { margin: 4px 0; }
+        .ai-content p { margin: 8px 0; }
+
+        /* Ranking table */
+        .rank-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        .rank-table th { text-align: left; padding: 10px 12px; background: #f5f5f7; font-weight: 600; color: #86868b; font-size: 12px; text-transform: uppercase; }
+        .rank-table td { padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+        .rank-good { color: #34c759; font-weight: 600; }
+        .rank-bad { color: #ff3b30; font-weight: 600; }
+
+        .export-btn { font-size: 12px; padding: 4px 12px; border-radius: 6px; background: #f5f5f7; border: 1px solid #d2d2d7; cursor: pointer; color: #48484a; }
+        .export-btn:hover { background: #e8e8ed; }
+
+        .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 24px; background: #1d1d1f; color: white; border-radius: 980px; font-size: 14px; z-index: 999; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <div class="header-left">
+            <h1>搜索评测系统</h1>
+            <nav>
+                <a href="/">数据管理</a>
+                <a href="/analysis" class="active">可视化分析</a>
+            </nav>
+        </div>
+        <div class="header-actions">
+            <select v-model="activeTestSet" @change="loadData" style="padding:6px 12px;border-radius:8px;border:1px solid #d2d2d7;font-size:13px;margin-right:8px">
+                <option v-for="ts in testSets" :key="ts.id" :value="ts.id">{{ ts.name }}</option>
+            </select>
+            <button class="btn btn-primary" @click="getAiAnalysis" :disabled="aiLoading">🤖 AI 深度分析</button>
+            <button class="btn btn-success" @click="exportReport" :disabled="reportLoading">📄 导出 Word 报告</button>
+        </div>
+    </div>
+
+    <div class="container" v-if="data">
+        <!-- Overview Cards -->
+        <div class="cards">
+            <div class="card">
+                <div class="card-label">总 Query 数</div>
+                <div class="card-value">{{ data.overview.total }}</div>
+            </div>
+            <div class="card">
+                <div class="card-label">已评分</div>
+                <div class="card-value blue">{{ data.overview.scored }}</div>
+            </div>
+            <div class="card">
+                <div class="card-label">AI 搜均分</div>
+                <div class="card-value">{{ data.overview.ai_avg }}</div>
+            </div>
+        </div>
+
+        <!-- Dimensions Chart -->
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">各维度得分</span>
+                <button class="export-btn" @click="exportChart('dimChart')">📷 导出 PNG</button>
+            </div>
+            <div class="section-body">
+                <div class="chart-container" ref="dimChart"></div>
+                <div class="text-analysis" v-html="dimText"></div>
+            </div>
+        </div>
+
+        <!-- VS Text Search -->
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">AI 搜 vs 文本搜</span>
+                <button class="export-btn" @click="exportChart('vsChart')">📷 导出 PNG</button>
+            </div>
+            <div class="section-body">
+                <div class="chart-container" ref="vsChart"></div>
+                <div class="text-analysis" v-html="vsText"></div>
+            </div>
+        </div>
+
+        <!-- By Category -->
+        <div class="section">
+            <div class="section-header">
+                <span class="section-title">按业务分类</span>
+                <button class="export-btn" @click="exportChart('catChart')">📷 导出 PNG</button>
+            </div>
+            <div class="section-body full">
+                <div class="chart-container" ref="catChart" style="height:420px"></div>
+            </div>
+            <div class="text-analysis" style="margin-top:16px" v-html="catText"></div>
+        </div>
+
+        <!-- By Query Level & Frequency -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
+            <div class="section" style="margin-bottom:0">
+                <div class="section-header">
+                    <span class="section-title">按 Query 层级</span>
+                    <button class="export-btn" @click="exportChart('levelChart')">📷</button>
+                </div>
+                <div class="chart-container" ref="levelChart" style="height:300px"></div>
+            </div>
+            <div class="section" style="margin-bottom:0">
+                <div class="section-header">
+                    <span class="section-title">按频率层级</span>
+                    <button class="export-btn" @click="exportChart('freqChart')">📷</button>
+                </div>
+                <div class="chart-container" ref="freqChart" style="height:300px"></div>
+            </div>
+        </div>
+
+        <!-- TOP5 / BOTTOM5 -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
+            <div class="section" style="margin-bottom:0">
+                <div class="section-title" style="margin-bottom:16px">🏆 TOP 5</div>
+                <table class="rank-table">
+                    <tr><th>Query</th><th>AI分</th><th>分类</th></tr>
+                    <tr v-for="q in data.top5" :key="q.id">
+                        <td>{{ q.query }}</td>
+                        <td class="rank-good">{{ q.ai_score?.toFixed(2) }}</td>
+                        <td>{{ q.category }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="section" style="margin-bottom:0">
+                <div class="section-title" style="margin-bottom:16px">⚠️ BOTTOM 5</div>
+                <table class="rank-table">
+                    <tr><th>Query</th><th>AI分</th><th>分类</th></tr>
+                    <tr v-for="q in data.bottom5" :key="q.id">
+                        <td>{{ q.query }}</td>
+                        <td class="rank-bad">{{ q.ai_score?.toFixed(2) }}</td>
+                        <td>{{ q.category }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- AI Deep Analysis -->
+        <div class="ai-section" v-if="aiText">
+            <div class="section-title">🤖 AI 深度分析（Kimi）</div>
+            <div class="ai-content" :class="{loading: aiLoading}" v-html="aiHtml"></div>
+        </div>
+    </div>
+
+    <div class="container" v-else style="text-align:center;padding:100px;color:#86868b">
+        加载中...
+    </div>
+
+    <div class="toast" v-if="toast">{{ toast }}</div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, nextTick } = Vue;
+const DIM_LABELS = { relevance: '相关性', accuracy: '准确性', ranking: '排序合理性', diversity: '多样性', quality_threshold: '质量门槛', copy_recommendation: '文案/推荐语', click_desire: '点击欲望' };
+
+// Harmonious color palette (soft modern)
+const COLORS = {
+    primary: '#5470c6',
+    secondary: '#91cc75',
+    accent: '#fac858',
+    warm: '#ee6666',
+    cool: '#73c0de',
+    purple: '#9a60b4',
+    teal: '#3ba272'
+};
+
+createApp({
+    setup() {
+        const data = ref(null);
+        const aiText = ref('');
+        const aiLoading = ref(false);
+        const reportLoading = ref(false);
+        const toast = ref('');
+        const charts = {};
+
+        const dimChart = ref(null);
+        const vsChart = ref(null);
+        const catChart = ref(null);
+        const levelChart = ref(null);
+        const freqChart = ref(null);
+
+        const testSets = ref([]);
+        const activeTestSet = ref(1);
+
+        const aiHtml = computed(() => {
+            if (!aiText.value) return '';
+            try { return marked.parse(aiText.value); } catch(e) { return aiText.value; }
+        });
+
+        const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = '', 3000); };
+
+        const loadData = async () => {
+            const res = await fetch(`/api/analysis?test_set_id=${activeTestSet.value}`);
+            data.value = await res.json();
+            await nextTick();
+            renderCharts();
+        };
+
+        const loadTestSets = async () => {
+            const res = await fetch('/api/test-sets');
+            testSets.value = await res.json();
+            const saved = localStorage.getItem('active_test_set');
+            if (saved && testSets.value.find(t => t.id === parseInt(saved))) {
+                activeTestSet.value = parseInt(saved);
+            } else if (testSets.value.length) {
+                activeTestSet.value = testSets.value[0].id;
+            }
+        };
+
+        const renderCharts = () => {
+            // Dimensions bar chart - gradient bars
+            const dims = data.value.dimensions;
+            charts.dimChart = echarts.init(dimChart.value);
+            charts.dimChart.setOption({
+                tooltip: { trigger: 'axis', formatter: (p) => { const d = dims[p[0].dataIndex]; return `${DIM_LABELS[d.name]}<br/>均分: <b>${d.mean}</b><br/>范围: ${d.min}~${d.max}<br/>有效数: ${d.count}`; } },
+                xAxis: { type: 'category', data: dims.map(d => DIM_LABELS[d.name] || d.name), axisLabel: { rotate: 15, color: '#666' } },
+                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                series: [{ type: 'bar', data: dims.map(d => d.mean), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: '#73c0de'}, {offset: 1, color: '#5470c6'}]), borderRadius: [6,6,0,0] }, barWidth: '50%' }],
+                grid: { left: 50, right: 20, bottom: 60, top: 20 }
+            });
+
+            // VS chart (pie) - softer colors
+            const vs = data.value.vs_text;
+            charts.vsChart = echarts.init(vsChart.value);
+            charts.vsChart.setOption({
+                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+                series: [{
+                    type: 'pie', radius: ['40%', '70%'],
+                    data: [
+                        { value: vs.better, name: 'AI更优', itemStyle: { color: '#91cc75' } },
+                        { value: vs.same, name: '持平', itemStyle: { color: '#fac858' } },
+                        { value: vs.worse, name: 'AI更差', itemStyle: { color: '#ee6666' } },
+                    ],
+                    label: { formatter: '{b}\n{d}%', fontSize: 13 },
+                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } }
+                }]
+            });
+
+            // Category chart - coordinated multi-series
+            const cats = data.value.by_category.slice(0, 8);
+            charts.catChart = echarts.init(catChart.value);
+            charts.catChart.setOption({
+                tooltip: { trigger: 'axis' },
+                legend: { top: 0, textStyle: { color: '#666' } },
+                xAxis: { type: 'category', data: cats.map(c => c.category), axisLabel: { rotate: 15, color: '#666' } },
+                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                series: [
+                    { name: 'AI综合分', type: 'bar', data: cats.map(c => c.ai_avg), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
+                    { name: '准确性', type: 'bar', data: cats.map(c => c.dims.accuracy), itemStyle: { color: '#fac858', borderRadius: [4,4,0,0] } },
+                    { name: '点击欲望', type: 'bar', data: cats.map(c => c.dims.click_desire), itemStyle: { color: '#9a60b4', borderRadius: [4,4,0,0] } },
+                ],
+                grid: { left: 50, right: 20, bottom: 60, top: 40 }
+            });
+
+            // Query level chart
+            const lvl = data.value.by_query_level;
+            charts.levelChart = echarts.init(levelChart.value);
+            const lvlDims = ['relevance','accuracy','click_desire'];
+            charts.levelChart.setOption({
+                tooltip: { trigger: 'axis' },
+                legend: { top: 0, textStyle: { color: '#666' } },
+                xAxis: { type: 'category', data: lvlDims.map(d => DIM_LABELS[d]) },
+                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                series: [
+                    { name: `短query(${lvl.short.n})`, type: 'bar', data: lvlDims.map(d => lvl.short.dims[d]), itemStyle: { color: '#73c0de', borderRadius: [4,4,0,0] } },
+                    { name: `长query(${lvl.long.n})`, type: 'bar', data: lvlDims.map(d => lvl.long.dims[d]), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
+                ],
+                grid: { left: 40, right: 10, bottom: 40, top: 40 }
+            });
+
+            // Frequency chart
+            const freqs = data.value.by_frequency;
+            const freqKeys = Object.keys(freqs).filter(k => k !== '未知');
+            charts.freqChart = echarts.init(freqChart.value);
+            charts.freqChart.setOption({
+                tooltip: { trigger: 'axis' },
+                legend: { top: 0, textStyle: { color: '#666' } },
+                xAxis: { type: 'category', data: freqKeys },
+                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                series: [
+                    { name: 'AI综合分', type: 'bar', data: freqKeys.map(k => freqs[k].dims.ai_avg), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
+                    { name: '准确性', type: 'bar', data: freqKeys.map(k => freqs[k].dims.accuracy), itemStyle: { color: '#91cc75', borderRadius: [4,4,0,0] } },
+                ],
+                grid: { left: 40, right: 10, bottom: 40, top: 40 }
+            });
+        };
+
+        // Text analysis (template)
+        const dimText = ref('');
+        const vsText = ref('');
+        const catText = ref('');
+
+        const generateText = () => {
+            if (!data.value) return;
+            const dims = data.value.dimensions;
+            const sorted = [...dims].sort((a,b) => b.mean - a.mean);
+            const best = sorted[0], worst = sorted[sorted.length-1];
+            const avg = (dims.reduce((s,d) => s + d.mean, 0) / dims.length).toFixed(2);
+            dimText.value = `<strong>整体均分 ${avg}/5</strong>。表现最好的维度是「${DIM_LABELS[best.name]}」（${best.mean}分），最弱的是「${DIM_LABELS[worst.name]}」（${worst.mean}分）。共 ${best.count} 条有效评分数据。`;
+
+            const vs = data.value.vs_text;
+            const total = vs.total || 1;
+            vsText.value = `<strong>AI搜在 ${(vs.better/total*100).toFixed(0)}% 的场景下优于文本搜</strong>，${(vs.same/total*100).toFixed(0)}% 持平，${(vs.worse/total*100).toFixed(0)}% 表现更差。有效对比数据 ${total} 条。`;
+
+            const cats = data.value.by_category;
+            const bestCat = cats.reduce((a,b) => a.ai_avg > b.ai_avg ? a : b);
+            const worstCat = cats.reduce((a,b) => a.ai_avg < b.ai_avg ? a : b);
+            catText.value = `共 ${cats.length} 个业务分类。AI搜综合分最高的分类是「${bestCat.category}」（${bestCat.ai_avg}分，n=${bestCat.n}），最低的是「${worstCat.category}」（${worstCat.ai_avg}分，n=${worstCat.n}）。`;
+        };
+
+        const exportChart = (name) => {
+            if (charts[name]) {
+                const url = charts[name].getDataURL({ type: 'png', pixelRatio: 2 });
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}.png`;
+                a.click();
+            }
+        };
+
+        const getAiAnalysis = async () => {
+            aiLoading.value = true;
+            aiText.value = '正在生成 AI 分析...';
+            try {
+                const res = await fetch('/api/analysis/ai-text', { method: 'POST' });
+                if (!res.ok) {
+                    const err = await res.json();
+                    aiText.value = '⚠️ ' + (err.detail || '分析失败');
+                } else {
+                    const result = await res.json();
+                    aiText.value = result.text;
+                }
+            } catch (e) {
+                aiText.value = '⚠️ 请求失败: ' + e.message;
+            }
+            aiLoading.value = false;
+        };
+
+        const exportReport = async () => {
+            reportLoading.value = true;
+            showToast('正在生成 Word 报告...');
+            try {
+                const res = await fetch('/api/export/report', { method: 'POST' });
+                if (res.ok) {
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = 'AI搜索评测报告.docx'; a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('报告已下载');
+                } else {
+                    showToast('报告生成失败');
+                }
+            } catch (e) { showToast('请求失败'); }
+            reportLoading.value = false;
+        };
+
+        onMounted(async () => {
+            await loadTestSets();
+            await loadData();
+            generateText();
+        });
+
+        return { data, dimChart, vsChart, catChart, levelChart, freqChart, dimText, vsText, catText, aiText, aiHtml, aiLoading, reportLoading, toast, exportChart, getAiAnalysis, exportReport, testSets, activeTestSet };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
