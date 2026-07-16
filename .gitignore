@@ -1,3 +1,4 @@
-__pycache__/ 
-*.db 
-start*.bat 
+__pycache__/
+*.db
+start*.bat
+static/screenshots/
