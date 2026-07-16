@@ -671,6 +671,113 @@ async def get_import_progress(task_id: str):
     return task
 
 
+@app.post("/api/import/local")
+async def import_local_file(test_set_id: int = 1, path: str = "/tmp/import.xlsx", skip_unknown: int = 1):
+    """Import from a file already on the server (uploaded via SCP)."""
+    if not os.path.exists(path):
+        return {"error": f"文件不存在: {path}"}
+
+    import re
+    import zipfile
+    from xml.etree import ElementTree as ET
+
+    task_id = str(uuid.uuid4())[:8]
+    import_tasks[task_id] = {"status": "parsing", "progress": 0, "total": 0, "imported": 0, "error": None, "result": None}
+    tmp_path = path
+
+    # --- Extract DISPIMG name->zip_path mapping ---
+    name_to_zip_path = {}
+    try:
+        zf = zipfile.ZipFile(tmp_path)
+        name_to_rid = {}
+        if 'xl/cellimages.xml' in zf.namelist():
+            ci_xml = zf.read('xl/cellimages.xml')
+            root = ET.fromstring(ci_xml)
+            ns = {
+                'etc': 'http://www.wps.cn/officeDocument/2017/etCustomData',
+                'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
+                'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+                'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+            }
+            for cell_img in root.findall('.//etc:cellImage', ns):
+                cnv_pr = cell_img.find('.//xdr:cNvPr', ns)
+                blip = cell_img.find('.//a:blip', ns)
+                if cnv_pr is not None and blip is not None:
+                    img_name = cnv_pr.get('name', '')
+                    rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed', '')
+                    if img_name and rid:
+                        name_to_rid[img_name] = rid
+
+        rid_to_path = {}
+        if 'xl/_rels/cellimages.xml.rels' in zf.namelist():
+            rels_xml = zf.read('xl/_rels/cellimages.xml.rels')
+            rels_root = ET.fromstring(rels_xml)
+            for rel in rels_root:
+                rid = rel.get('Id', '')
+                target = rel.get('Target', '')
+                if rid and target:
+                    rid_to_path[rid] = 'xl/' + target
+
+        for img_name, rid in name_to_rid.items():
+            fpath = rid_to_path.get(rid)
+            if fpath and fpath in zf.namelist():
+                name_to_zip_path[img_name] = fpath
+        zf.close()
+    except Exception:
+        pass
+
+    wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
+    ws = wb.active
+
+    header_row = []
+    for row in ws.iter_rows(min_row=1, max_row=1):
+        header_row = [str(cell.value).strip() if cell.value else '' for cell in row]
+        break
+
+    col_mapping = {}
+    screenshot_cols = {}
+    dynamic_mapping = get_dynamic_header_mapping(test_set_id)
+    for col_idx, header in enumerate(header_row):
+        if not header:
+            continue
+        field = dynamic_mapping.get(header)
+        if field:
+            if field == 'text_screenshot_url':
+                screenshot_cols[col_idx] = 'text'
+            elif field == 'ai_screenshot_url':
+                screenshot_cols[col_idx] = 'ai'
+            else:
+                col_mapping[col_idx] = field
+        else:
+            for k, v in dynamic_mapping.items():
+                if v and (k.lower() in header.lower() or header.lower() in k.lower()):
+                    col_mapping[col_idx] = v
+                    break
+
+    total_rows = 0
+    for _ in ws.iter_rows(min_row=2):
+        total_rows += 1
+    wb.close()
+
+    query_col = None
+    for cidx, field in col_mapping.items():
+        if field == 'query':
+            query_col = cidx
+            break
+    if query_col is None:
+        return {"error": "未找到 query 列"}
+
+    import_tasks[task_id]["total"] = total_rows
+    import_tasks[task_id]["status"] = "importing"
+
+    asyncio.create_task(_do_import(
+        task_id, tmp_path, test_set_id, col_mapping, screenshot_cols,
+        query_col, name_to_zip_path, total_rows
+    ))
+
+    return {"task_id": task_id, "total": total_rows, "status": "importing"}
+
+
 @app.get("/api/export/excel")
 async def export_excel():
     from openpyxl.drawing.image import Image as XlImage

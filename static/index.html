@@ -481,6 +481,12 @@
                 已导入 {{ importProgress.imported }} 条 / 共 {{ importProgress.total }} 行
             </div>
         </div>
+        <div style="margin-top:12px;border-top:1px solid #e0e0e0;padding-top:10px;">
+            <button @click="importFromServer" :disabled="importProgress.active" style="font-size:12px;padding:4px 12px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;">
+                从服务器本地文件导入 (/tmp/import.xlsx)
+            </button>
+            <span style="font-size:11px;color:#86868b;margin-left:8px;">先用SCP传文件到服务器再点此按钮</span>
+        </div>
     </div>
 
     <div class="table-wrapper">
@@ -1148,6 +1154,26 @@ createApp({
             }
         };
 
+        const importFromServer = async () => {
+            importProgress.value = { active: true, percent: 0, imported: 0, total: 0, statusText: '服务器本地导入中...' };
+            try {
+                const res = await fetch(`/api/import/local?test_set_id=${activeTestSet.value}&skip_unknown=1`, { method: 'POST' });
+                const result = await res.json();
+                if (result.error) {
+                    importProgress.value.active = false;
+                    showToast(result.error, true);
+                    return;
+                }
+                if (result.task_id) {
+                    importProgress.value.total = result.total;
+                    await pollImportProgress(result.task_id);
+                }
+            } catch (e) {
+                importProgress.value.active = false;
+                showToast('请求失败: ' + e.message, true);
+            }
+        };
+
         const unknownColumns = ref([]);
         const showUnknownDialog = ref(false);
 
@@ -1317,7 +1343,7 @@ createApp({
             onColDragStart, onColDragOver, onColDrop,
             toggleSort, getFilterOptions, openFilter, applyFilter, clearFilter, clearAllFilters,
             calcAiScore, saveField, deleteQuery, clearAll, doClear, showClearDialog, skipBackup,
-            importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog, importProgress,
+            importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog, importProgress, importFromServer,
             exportExcel, exportCsv, showImage, prevImage, nextImage,
             showAddColumn, newColLabel, newColType, addColumn, removeColumn,
             testSets, activeTestSet, switchTestSet, createTestSet, renameTestSet, deleteTestSet,
