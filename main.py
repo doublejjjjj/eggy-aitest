@@ -8,6 +8,7 @@ import json
 import time
 import sqlite3
 import asyncio
+import uuid
 from io import BytesIO, StringIO
 from datetime import datetime
 from typing import List
@@ -28,6 +29,9 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 
 app = FastAPI(title="搜索评测系统")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Import progress tracking
+import_tasks = {}  # task_id -> {status, progress, total, imported, error, result}
 
 # ============================================================
 # Database
@@ -401,108 +405,145 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
     from xml.etree import ElementTree as ET
 
     # Stream upload to temp file (don't hold 177MB in RAM)
+    task_id = str(uuid.uuid4())[:8]
+    import_tasks[task_id] = {"status": "uploading", "progress": 0, "total": 0, "imported": 0, "error": None, "result": None}
+
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
     try:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
             tmp.write(chunk)
         tmp.close()
         tmp_path = tmp.name
+    except Exception as e:
+        import_tasks[task_id]["status"] = "error"
+        import_tasks[task_id]["error"] = str(e)
+        return {"task_id": task_id, "error": str(e)}
 
-        # --- Extract DISPIMG name->zip_path mapping (no image bytes in memory) ---
-        name_to_zip_path = {}
+    import_tasks[task_id]["status"] = "parsing"
+
+    # --- Extract DISPIMG name->zip_path mapping (no image bytes in memory) ---
+    name_to_zip_path = {}
+    try:
+        zf = zipfile.ZipFile(tmp_path)
+        name_to_rid = {}
+        if 'xl/cellimages.xml' in zf.namelist():
+            ci_xml = zf.read('xl/cellimages.xml')
+            root = ET.fromstring(ci_xml)
+            ns = {
+                'etc': 'http://www.wps.cn/officeDocument/2017/etCustomData',
+                'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
+                'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+                'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+            }
+            for cell_img in root.findall('.//etc:cellImage', ns):
+                cnv_pr = cell_img.find('.//xdr:cNvPr', ns)
+                blip = cell_img.find('.//a:blip', ns)
+                if cnv_pr is not None and blip is not None:
+                    img_name = cnv_pr.get('name', '')
+                    rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed', '')
+                    if img_name and rid:
+                        name_to_rid[img_name] = rid
+
+        rid_to_path = {}
+        if 'xl/_rels/cellimages.xml.rels' in zf.namelist():
+            rels_xml = zf.read('xl/_rels/cellimages.xml.rels')
+            rels_root = ET.fromstring(rels_xml)
+            for rel in rels_root:
+                rid = rel.get('Id', '')
+                target = rel.get('Target', '')
+                if rid and target:
+                    rid_to_path[rid] = 'xl/' + target
+
+        for img_name, rid in name_to_rid.items():
+            fpath = rid_to_path.get(rid)
+            if fpath and fpath in zf.namelist():
+                name_to_zip_path[img_name] = fpath
+
+        zf.close()
+    except Exception:
+        pass
+
+    # --- Load workbook with read_only=True (streams rows, low memory) ---
+    wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
+    ws = wb.active
+
+    # Read headers from first row
+    header_row = []
+    for row in ws.iter_rows(min_row=1, max_row=1):
+        header_row = [str(cell.value).strip() if cell.value else '' for cell in row]
+        break
+
+    col_mapping = {}  # col_idx (0-based) -> db_field
+    screenshot_cols = {}  # col_idx (0-based) -> 'text' or 'ai'
+    unknown_headers = []
+
+    dynamic_mapping = get_dynamic_header_mapping(test_set_id)
+    for col_idx, header in enumerate(header_row):
+        if not header:
+            continue
+        field = dynamic_mapping.get(header)
+        if field:
+            if field == 'text_screenshot_url':
+                screenshot_cols[col_idx] = 'text'
+            elif field == 'ai_screenshot_url':
+                screenshot_cols[col_idx] = 'ai'
+            else:
+                col_mapping[col_idx] = field
+        else:
+            matched = False
+            for k, v in dynamic_mapping.items():
+                if v and (k.lower() in header.lower() or header.lower() in k.lower()):
+                    col_mapping[col_idx] = v
+                    matched = True
+                    break
+            if not matched:
+                unknown_headers.append(header)
+
+    # Count total rows for progress
+    total_rows = 0
+    for _ in ws.iter_rows(min_row=2):
+        total_rows += 1
+    wb.close()
+
+    if unknown_headers:
+        if not skip_unknown:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+            return {"needs_confirmation": True, "unknown_columns": unknown_headers, "imported": 0, "duplicates_count": 0}
+
+    # Find query column
+    query_col = None
+    for cidx, field in col_mapping.items():
+        if field == 'query':
+            query_col = cidx
+            break
+    if query_col is None:
         try:
-            zf = zipfile.ZipFile(tmp_path)
-            name_to_rid = {}
-            if 'xl/cellimages.xml' in zf.namelist():
-                ci_xml = zf.read('xl/cellimages.xml')
-                root = ET.fromstring(ci_xml)
-                ns = {
-                    'etc': 'http://www.wps.cn/officeDocument/2017/etCustomData',
-                    'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
-                    'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
-                    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
-                }
-                for cell_img in root.findall('.//etc:cellImage', ns):
-                    cnv_pr = cell_img.find('.//xdr:cNvPr', ns)
-                    blip = cell_img.find('.//a:blip', ns)
-                    if cnv_pr is not None and blip is not None:
-                        img_name = cnv_pr.get('name', '')
-                        rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed', '')
-                        if img_name and rid:
-                            name_to_rid[img_name] = rid
-
-            rid_to_path = {}
-            if 'xl/_rels/cellimages.xml.rels' in zf.namelist():
-                rels_xml = zf.read('xl/_rels/cellimages.xml.rels')
-                rels_root = ET.fromstring(rels_xml)
-                for rel in rels_root:
-                    rid = rel.get('Id', '')
-                    target = rel.get('Target', '')
-                    if rid and target:
-                        rid_to_path[rid] = 'xl/' + target
-
-            for img_name, rid in name_to_rid.items():
-                fpath = rid_to_path.get(rid)
-                if fpath and fpath in zf.namelist():
-                    name_to_zip_path[img_name] = fpath
-
-            zf.close()
+            os.unlink(tmp_path)
         except Exception:
             pass
+        return {"error": "未找到 query 列", "imported": 0, "duplicates_count": 0}
 
-        # --- Load workbook with read_only=True (streams rows, low memory) ---
-        wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
-        ws = wb.active
+    import_tasks[task_id]["total"] = total_rows
+    import_tasks[task_id]["status"] = "importing"
 
-        # Read headers from first row
-        header_row = []
-        for row in ws.iter_rows(min_row=1, max_row=1):
-            header_row = [str(cell.value).strip() if cell.value else '' for cell in row]
-            break
+    # Start background import task
+    asyncio.create_task(_do_import(
+        task_id, tmp_path, test_set_id, col_mapping, screenshot_cols,
+        query_col, name_to_zip_path, total_rows
+    ))
 
-        col_mapping = {}  # col_idx (0-based) -> db_field
-        screenshot_cols = {}  # col_idx (0-based) -> 'text' or 'ai'
-        unknown_headers = []
+    return {"task_id": task_id, "total": total_rows, "status": "importing"}
 
-        dynamic_mapping = get_dynamic_header_mapping(test_set_id)
-        for col_idx, header in enumerate(header_row):
-            if not header:
-                continue
-            field = dynamic_mapping.get(header)
-            if field:
-                if field == 'text_screenshot_url':
-                    screenshot_cols[col_idx] = 'text'
-                elif field == 'ai_screenshot_url':
-                    screenshot_cols[col_idx] = 'ai'
-                else:
-                    col_mapping[col_idx] = field
-            else:
-                matched = False
-                for k, v in dynamic_mapping.items():
-                    if v and (k.lower() in header.lower() or header.lower() in k.lower()):
-                        col_mapping[col_idx] = v
-                        matched = True
-                        break
-                if not matched:
-                    unknown_headers.append(header)
 
-        wb.close()
+async def _do_import(task_id, tmp_path, test_set_id, col_mapping, screenshot_cols, query_col, name_to_zip_path, total_rows):
+    import re
+    import zipfile
 
-        if unknown_headers:
-            if not skip_unknown:
-                return {"needs_confirmation": True, "unknown_columns": unknown_headers, "imported": 0, "duplicates_count": 0}
-
-        # Find query column
-        query_col = None
-        for cidx, field in col_mapping.items():
-            if field == 'query':
-                query_col = cidx
-                break
-        if query_col is None:
-            return {"error": "未找到 query 列", "imported": 0, "duplicates_count": 0}
-
-        # Also load formula workbook for DISPIMG detection (read_only)
-        wb_formula = None
+    try:
+        # Load formula rows if needed
         formula_rows = []
         if screenshot_cols and name_to_zip_path:
             wb_formula = openpyxl.load_workbook(tmp_path, data_only=False, read_only=True)
@@ -516,7 +557,7 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
                 formula_rows.append(formula_row)
             wb_formula.close()
 
-        # Re-open data workbook for row iteration
+        # Open data workbook for row iteration
         wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
         ws = wb.active
 
@@ -539,12 +580,14 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
             query_val = cells[query_col] if query_col < len(cells) else None
             if query_val is None or str(query_val).strip() == "":
                 row_num += 1
+                import_tasks[task_id]["progress"] = row_num
                 continue
 
             query_str = str(query_val).strip()
             if query_str in existing:
                 duplicates.append(query_str)
                 row_num += 1
+                import_tasks[task_id]["progress"] = row_num
                 continue
 
             row_dict = {f: None for f in EXCEL_COLUMNS}
@@ -590,10 +633,13 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
                                 await db.execute(f"UPDATE queries SET {col_name} = ? WHERE id = ?", [url, new_id])
 
             row_num += 1
+            import_tasks[task_id]["progress"] = row_num
+            import_tasks[task_id]["imported"] = imported
 
-            # Commit every 100 rows to avoid huge transactions
+            # Commit every 100 rows
             if imported % 100 == 0:
                 await db.commit()
+                await asyncio.sleep(0)  # yield to event loop
 
         await db.commit()
         wb.close()
@@ -603,14 +649,26 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
         if duplicates:
             result["duplicates"] = duplicates
 
+        import_tasks[task_id]["status"] = "done"
+        import_tasks[task_id]["result"] = result
         await manager.broadcast({"type": "data_refresh"})
-        return result
 
+    except Exception as e:
+        import_tasks[task_id]["status"] = "error"
+        import_tasks[task_id]["error"] = str(e)
     finally:
         try:
             os.unlink(tmp_path)
         except Exception:
             pass
+
+
+@app.get("/api/import/progress")
+async def get_import_progress(task_id: str):
+    task = import_tasks.get(task_id)
+    if not task:
+        return {"error": "task not found"}
+    return task
 
 
 @app.get("/api/export/excel")

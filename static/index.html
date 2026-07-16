@@ -467,8 +467,20 @@
     </div>
 
     <div class="upload-area" :class="{ show: showImport }">
-        <input type="file" accept=".xlsx,.xls" @change="importExcel" />
+        <input type="file" accept=".xlsx,.xls" @change="importExcel" :disabled="importProgress.active" />
         <p style="margin-top:10px;color:#86868b;font-size:13px;">选择 Excel 文件导入（重复 query 自动跳过）</p>
+        <div v-if="importProgress.active" style="margin-top:12px;width:100%;max-width:400px;">
+            <div style="display:flex;justify-content:space-between;font-size:13px;color:#333;margin-bottom:4px;">
+                <span>{{ importProgress.statusText }}</span>
+                <span>{{ importProgress.percent }}%</span>
+            </div>
+            <div style="background:#e0e0e0;border-radius:6px;height:8px;overflow:hidden;">
+                <div :style="{width: importProgress.percent + '%', background: '#0071e3', height: '100%', borderRadius: '6px', transition: 'width 0.3s'}"></div>
+            </div>
+            <div style="font-size:12px;color:#86868b;margin-top:4px;">
+                已导入 {{ importProgress.imported }} 条 / 共 {{ importProgress.total }} 行
+            </div>
+        </div>
     </div>
 
     <div class="table-wrapper">
@@ -1034,6 +1046,7 @@ createApp({
         };
 
         const importFile = ref(null);
+        const importProgress = ref({ active: false, percent: 0, imported: 0, total: 0, statusText: '' });
 
         const importExcel = async (e) => {
             const file = e.target.files[0];
@@ -1047,31 +1060,92 @@ createApp({
             formData.append('file', file);
             let url = `/api/import?test_set_id=${activeTestSet.value}`;
             if (skipUnknown) url += '&skip_unknown=1';
+
+            importProgress.value = { active: true, percent: 0, imported: 0, total: 0, statusText: '上传中...' };
+
             const res = await fetch(url, { method: 'POST', body: formData });
             const result = await res.json();
 
             if (result.needs_confirmation) {
+                importProgress.value.active = false;
                 unknownColumns.value = result.unknown_columns;
                 showUnknownDialog.value = true;
                 return;
             }
 
             if (result.error) {
+                importProgress.value.active = false;
                 showToast(result.error, true);
                 return;
             }
 
-            let msg = `导入成功: ${result.imported} 条`;
-            if (result.duplicates_count > 0) {
-                msg += ` | 跳过 ${result.duplicates_count} 条重复`;
-                if (result.duplicates && result.duplicates.length > 0) {
-                    msg += `: ${result.duplicates.slice(0, 5).join(', ')}`;
-                    if (result.duplicates_count > 5) msg += '...';
+            // If we got a task_id, poll for progress
+            if (result.task_id) {
+                importProgress.value.total = result.total;
+                importProgress.value.statusText = '导入中...';
+                await pollImportProgress(result.task_id);
+            } else {
+                // Legacy direct response
+                importProgress.value.active = false;
+                let msg = `导入成功: ${result.imported} 条`;
+                if (result.duplicates_count > 0) {
+                    msg += ` | 跳过 ${result.duplicates_count} 条重复`;
+                }
+                showToast(msg);
+                showImport.value = false;
+                await loadQueries();
+            }
+        };
+
+        const pollImportProgress = async (taskId) => {
+            while (true) {
+                await new Promise(r => setTimeout(r, 800));
+                try {
+                    const res = await fetch(`/api/import/progress?task_id=${taskId}`);
+                    const data = await res.json();
+
+                    if (data.error && !data.status) {
+                        importProgress.value.active = false;
+                        showToast('导入任务未找到', true);
+                        return;
+                    }
+
+                    const total = data.total || 1;
+                    const progress = data.progress || 0;
+                    importProgress.value.percent = Math.round(progress / total * 100);
+                    importProgress.value.imported = data.imported || 0;
+                    importProgress.value.total = total;
+
+                    if (data.status === 'done') {
+                        importProgress.value.percent = 100;
+                        importProgress.value.statusText = '完成!';
+                        await new Promise(r => setTimeout(r, 500));
+                        importProgress.value.active = false;
+
+                        const r = data.result || {};
+                        let msg = `导入成功: ${r.imported || 0} 条`;
+                        if (r.duplicates_count > 0) {
+                            msg += ` | 跳过 ${r.duplicates_count} 条重复`;
+                        }
+                        showToast(msg);
+                        showImport.value = false;
+                        await loadQueries();
+                        return;
+                    }
+
+                    if (data.status === 'error') {
+                        importProgress.value.active = false;
+                        showToast(`导入失败: ${data.error}`, true);
+                        return;
+                    }
+
+                    importProgress.value.statusText = `导入中... (${data.imported || 0} 条)`;
+                } catch (e) {
+                    importProgress.value.active = false;
+                    showToast('进度查询失败', true);
+                    return;
                 }
             }
-            showToast(msg);
-            showImport.value = false;
-            await loadQueries();
         };
 
         const unknownColumns = ref([]);
@@ -1243,7 +1317,7 @@ createApp({
             onColDragStart, onColDragOver, onColDrop,
             toggleSort, getFilterOptions, openFilter, applyFilter, clearFilter, clearAllFilters,
             calcAiScore, saveField, deleteQuery, clearAll, doClear, showClearDialog, skipBackup,
-            importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog,
+            importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog, importProgress,
             exportExcel, exportCsv, showImage, prevImage, nextImage,
             showAddColumn, newColLabel, newColType, addColumn, removeColumn,
             testSets, activeTestSet, switchTestSet, createTestSet, renameTestSet, deleteTestSet,
