@@ -101,23 +101,33 @@ HEADER_TO_FIELD = {
 CUSTOM_COLUMNS_PATH = os.path.join(APP_DIR, "custom_columns.json")
 
 
-def load_custom_columns():
+def load_custom_columns(test_set_id=None):
     """Load custom column definitions: [{field, label, type}]"""
+    if test_set_id:
+        path = os.path.join(APP_DIR, f"custom_columns_{test_set_id}.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+    # Fallback to global (for backward compat)
     if os.path.exists(CUSTOM_COLUMNS_PATH):
         with open(CUSTOM_COLUMNS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
     return []
 
 
-def save_custom_columns(cols):
-    with open(CUSTOM_COLUMNS_PATH, "w", encoding="utf-8") as f:
+def save_custom_columns(cols, test_set_id=None):
+    if test_set_id:
+        path = os.path.join(APP_DIR, f"custom_columns_{test_set_id}.json")
+    else:
+        path = CUSTOM_COLUMNS_PATH
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(cols, f, ensure_ascii=False, indent=2)
 
 
-def get_dynamic_header_mapping():
+def get_dynamic_header_mapping(test_set_id=None):
     """Return HEADER_TO_FIELD merged with custom columns"""
     mapping = dict(HEADER_TO_FIELD)
-    for col in load_custom_columns():
+    for col in load_custom_columns(test_set_id):
         mapping[col["label"]] = col["field"]
     return mapping
 
@@ -263,7 +273,7 @@ async def create_test_set(body: dict):
         score_fields = ['relevance', 'accuracy', 'ranking', 'diversity', 'quality_threshold',
                         'copy_recommendation', 'click_desire', 'vs_text_search', 'ai_search_score',
                         'text_screenshot_url', 'ai_screenshot_url', 'search_result']
-        custom_cols = load_custom_columns()
+        custom_cols = load_custom_columns(copy_from)
         score_fields += [c["field"] for c in custom_cols]
 
         for row in src_rows:
@@ -387,201 +397,220 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
 async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test_set_id: int = 1):
     import re
     import zipfile
+    import tempfile
     from xml.etree import ElementTree as ET
 
-    content = await file.read()
-
-    # --- Extract WPS DISPIMG images from xlsx zip ---
-    dispimg_map = {}  # image_id -> image bytes
+    # Stream upload to temp file (don't hold 177MB in RAM)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
     try:
-        zf = zipfile.ZipFile(BytesIO(content))
-        # Parse cellimages.xml to get name -> rId mapping
-        name_to_rid = {}
-        if 'xl/cellimages.xml' in zf.namelist():
-            ci_xml = zf.read('xl/cellimages.xml')
-            root = ET.fromstring(ci_xml)
-            for elem in root.iter():
-                if 'cNvPr' in elem.tag:
-                    name = elem.get('name', '')
-                    if name.startswith('ID_'):
-                        # Find sibling blip element for rId
-                        parent = None
-                        for pic in root.iter():
-                            if 'pic' in pic.tag:
-                                cnv = pic.find('.//' + elem.tag.split('}')[0] + '}cNvPr[@name="' + name + '"]') if '}' in elem.tag else None
-                                # Simpler: iterate all pics, match by name
-                                pass
-                        pass
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            tmp.write(chunk)
+        tmp.close()
+        tmp_path = tmp.name
 
-            # Re-parse more carefully
-            ns = {
-                'etc': 'http://www.wps.cn/officeDocument/2017/etCustomData',
-                'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
-                'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
-                'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
-            }
+        # --- Extract DISPIMG name->zip_path mapping (no image bytes in memory) ---
+        name_to_zip_path = {}
+        try:
+            zf = zipfile.ZipFile(tmp_path)
             name_to_rid = {}
-            for cell_img in root.findall('.//etc:cellImage', ns):
-                cnv_pr = cell_img.find('.//xdr:cNvPr', ns)
-                blip = cell_img.find('.//a:blip', ns)
-                if cnv_pr is not None and blip is not None:
-                    img_name = cnv_pr.get('name', '')
-                    rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed', '')
-                    if img_name and rid:
-                        name_to_rid[img_name] = rid
+            if 'xl/cellimages.xml' in zf.namelist():
+                ci_xml = zf.read('xl/cellimages.xml')
+                root = ET.fromstring(ci_xml)
+                ns = {
+                    'etc': 'http://www.wps.cn/officeDocument/2017/etCustomData',
+                    'xdr': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing',
+                    'a': 'http://schemas.openxmlformats.org/drawingml/2006/main',
+                    'r': 'http://schemas.openxmlformats.org/officeDocument/2006/relationships',
+                }
+                for cell_img in root.findall('.//etc:cellImage', ns):
+                    cnv_pr = cell_img.find('.//xdr:cNvPr', ns)
+                    blip = cell_img.find('.//a:blip', ns)
+                    if cnv_pr is not None and blip is not None:
+                        img_name = cnv_pr.get('name', '')
+                        rid = blip.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed', '')
+                        if img_name and rid:
+                            name_to_rid[img_name] = rid
 
-        # Parse cellimages.xml.rels to get rId -> file path
-        rid_to_path = {}
-        if 'xl/_rels/cellimages.xml.rels' in zf.namelist():
-            rels_xml = zf.read('xl/_rels/cellimages.xml.rels')
-            rels_root = ET.fromstring(rels_xml)
-            for rel in rels_root:
-                rid = rel.get('Id', '')
-                target = rel.get('Target', '')
-                if rid and target:
-                    rid_to_path[rid] = 'xl/' + target
+            rid_to_path = {}
+            if 'xl/_rels/cellimages.xml.rels' in zf.namelist():
+                rels_xml = zf.read('xl/_rels/cellimages.xml.rels')
+                rels_root = ET.fromstring(rels_xml)
+                for rel in rels_root:
+                    rid = rel.get('Id', '')
+                    target = rel.get('Target', '')
+                    if rid and target:
+                        rid_to_path[rid] = 'xl/' + target
 
-        # Build final map: image_name -> bytes
-        for img_name, rid in name_to_rid.items():
-            fpath = rid_to_path.get(rid)
-            if fpath and fpath in zf.namelist():
-                dispimg_map[img_name] = zf.read(fpath)
+            for img_name, rid in name_to_rid.items():
+                fpath = rid_to_path.get(rid)
+                if fpath and fpath in zf.namelist():
+                    name_to_zip_path[img_name] = fpath
 
-        zf.close()
-    except Exception:
-        pass
+            zf.close()
+        except Exception:
+            pass
 
-    # --- Load workbook with formulas (not data_only) to read DISPIMG ---
-    wb_formula = openpyxl.load_workbook(BytesIO(content), data_only=False)
-    ws_formula = wb_formula.active
+        # --- Load workbook with read_only=True (streams rows, low memory) ---
+        wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
+        ws = wb.active
 
-    # --- Load workbook with data_only for values ---
-    wb = openpyxl.load_workbook(BytesIO(content), data_only=True)
-    ws = wb.active
-
-    # --- Parse headers (row 1) and map to DB fields ---
-    header_row = []
-    for col_idx in range(1, ws.max_column + 1):
-        h = ws.cell(1, col_idx).value
-        header_row.append(str(h).strip() if h else '')
-
-    col_mapping = {}  # col_idx (1-based) -> db_field
-    screenshot_cols = {}  # col_idx -> 'text' or 'ai'
-    unknown_headers = []
-
-    for col_idx, header in enumerate(header_row, start=1):
-        if not header:
-            continue
-        dynamic_mapping = get_dynamic_header_mapping()
-        field = dynamic_mapping.get(header)
-        if field:
-            if field == 'text_screenshot_url':
-                screenshot_cols[col_idx] = 'text'
-            elif field == 'ai_screenshot_url':
-                screenshot_cols[col_idx] = 'ai'
-            else:
-                col_mapping[col_idx] = field
-        else:
-            # Try case-insensitive / partial match
-            matched = False
-            for k, v in dynamic_mapping.items():
-                if v and (k.lower() in header.lower() or header.lower() in k.lower()):
-                    col_mapping[col_idx] = v
-                    matched = True
-                    break
-            if not matched:
-                unknown_headers.append(header)
-
-    if unknown_headers:
-        if not skip_unknown:
-            return {"needs_confirmation": True, "unknown_columns": unknown_headers, "imported": 0, "duplicates_count": 0}
-
-    # Find query column
-    query_col = None
-    for cidx, field in col_mapping.items():
-        if field == 'query':
-            query_col = cidx
+        # Read headers from first row
+        header_row = []
+        for row in ws.iter_rows(min_row=1, max_row=1):
+            header_row = [str(cell.value).strip() if cell.value else '' for cell in row]
             break
-    if query_col is None:
-        return {"error": "未找到 query 列", "imported": 0, "duplicates_count": 0}
 
-    db = await get_db()
+        col_mapping = {}  # col_idx (0-based) -> db_field
+        screenshot_cols = {}  # col_idx (0-based) -> 'text' or 'ai'
+        unknown_headers = []
 
-    cursor = await db.execute("SELECT query FROM queries WHERE test_set_id = ?", [test_set_id])
-    existing = {row[0] for row in await cursor.fetchall()}
+        dynamic_mapping = get_dynamic_header_mapping(test_set_id)
+        for col_idx, header in enumerate(header_row):
+            if not header:
+                continue
+            field = dynamic_mapping.get(header)
+            if field:
+                if field == 'text_screenshot_url':
+                    screenshot_cols[col_idx] = 'text'
+                elif field == 'ai_screenshot_url':
+                    screenshot_cols[col_idx] = 'ai'
+                else:
+                    col_mapping[col_idx] = field
+            else:
+                matched = False
+                for k, v in dynamic_mapping.items():
+                    if v and (k.lower() in header.lower() or header.lower() in k.lower()):
+                        col_mapping[col_idx] = v
+                        matched = True
+                        break
+                if not matched:
+                    unknown_headers.append(header)
 
-    imported = 0
-    duplicates = []
-    now = datetime.now().isoformat()
-    dispimg_re = re.compile(r'DISPIMG\("([^"]+)"')
+        wb.close()
 
-    # DB fields for insert (excluding screenshots which are handled separately)
-    db_fields = EXCEL_COLUMNS  # all possible fields
+        if unknown_headers:
+            if not skip_unknown:
+                return {"needs_confirmation": True, "unknown_columns": unknown_headers, "imported": 0, "duplicates_count": 0}
 
-    for row_idx in range(2, ws.max_row + 1):
-        query_val = ws.cell(row_idx, query_col).value
-        if query_val is None or str(query_val).strip() == "":
-            continue
+        # Find query column
+        query_col = None
+        for cidx, field in col_mapping.items():
+            if field == 'query':
+                query_col = cidx
+                break
+        if query_col is None:
+            return {"error": "未找到 query 列", "imported": 0, "duplicates_count": 0}
 
-        query_str = str(query_val).strip()
-        if query_str in existing:
-            duplicates.append(query_str)
-            continue
+        # Also load formula workbook for DISPIMG detection (read_only)
+        wb_formula = None
+        formula_rows = []
+        if screenshot_cols and name_to_zip_path:
+            wb_formula = openpyxl.load_workbook(tmp_path, data_only=False, read_only=True)
+            ws_formula = wb_formula.active
+            for row in ws_formula.iter_rows(min_row=2):
+                formula_row = {}
+                for cidx in screenshot_cols:
+                    cell = row[cidx] if cidx < len(row) else None
+                    if cell and cell.value:
+                        formula_row[cidx] = str(cell.value)
+                formula_rows.append(formula_row)
+            wb_formula.close()
 
-        # Build row dict from column mapping
-        row_dict = {f: None for f in EXCEL_COLUMNS}
-        for col_idx, field in col_mapping.items():
-            val = ws.cell(row_idx, col_idx).value
-            if isinstance(val, str) and val.startswith("="):
-                val = None
-            row_dict[field] = val
+        # Re-open data workbook for row iteration
+        wb = openpyxl.load_workbook(tmp_path, data_only=True, read_only=True)
+        ws = wb.active
 
-        row_data = [row_dict.get(f) for f in EXCEL_COLUMNS]
+        db = await get_db()
+        cursor = await db.execute("SELECT query FROM queries WHERE test_set_id = ?", [test_set_id])
+        existing = {row[0] for row in await cursor.fetchall()}
 
-        # Also include custom columns
-        custom_cols = load_custom_columns()
+        imported = 0
+        duplicates = []
+        now = datetime.now().isoformat()
+        dispimg_re = re.compile(r'DISPIMG\("([^"]+)"')
+        custom_cols = load_custom_columns(test_set_id)
         all_fields = EXCEL_COLUMNS + [c["field"] for c in custom_cols]
-        row_data_full = [row_dict.get(f) for f in all_fields]
-
         field_names = ", ".join(all_fields + ["test_set_id", "created_at", "updated_at"])
         placeholders = ", ".join(["?"] * (len(all_fields) + 3))
-        await db.execute(
-            f"INSERT INTO queries ({field_names}) VALUES ({placeholders})",
-            row_data_full + [test_set_id, now, now]
-        )
-        existing.add(query_str)
-        imported += 1
 
-        new_id_cursor = await db.execute("SELECT last_insert_rowid()")
-        new_id = (await new_id_cursor.fetchone())[0]
+        row_num = 0
+        for row in ws.iter_rows(min_row=2):
+            cells = [cell.value for cell in row]
+            query_val = cells[query_col] if query_col < len(cells) else None
+            if query_val is None or str(query_val).strip() == "":
+                row_num += 1
+                continue
 
-        # Extract DISPIMG images for screenshot columns
-        for col_idx, stype in screenshot_cols.items():
-            formula_val = ws_formula.cell(row_idx, col_idx).value
-            if formula_val and isinstance(formula_val, str) and 'DISPIMG' in formula_val:
-                m = dispimg_re.search(formula_val)
-                if m:
-                    img_id = m.group(1)
-                    img_bytes = dispimg_map.get(img_id)
-                    if img_bytes:
-                        ext = 'png' if img_bytes[:4] == b'\x89PNG' else 'jpg'
-                        filename = f"q{new_id}_{stype}_{int(datetime.now().timestamp())}.{ext}"
-                        filepath = os.path.join(SCREENSHOTS_DIR, filename)
-                        with open(filepath, "wb") as f:
-                            f.write(img_bytes)
-                        url = f"/static/screenshots/{filename}"
-                        col_name = "text_screenshot_url" if stype == "text" else "ai_screenshot_url"
-                        await db.execute(f"UPDATE queries SET {col_name} = ? WHERE id = ?", [url, new_id])
+            query_str = str(query_val).strip()
+            if query_str in existing:
+                duplicates.append(query_str)
+                row_num += 1
+                continue
 
-    await db.commit()
-    await db.close()
+            row_dict = {f: None for f in EXCEL_COLUMNS}
+            for col_idx, field in col_mapping.items():
+                val = cells[col_idx] if col_idx < len(cells) else None
+                if isinstance(val, str) and val.startswith("="):
+                    val = None
+                row_dict[field] = val
 
-    result = {"imported": imported, "duplicates_count": len(duplicates)}
-    if duplicates:
-        result["duplicates"] = duplicates
+            row_data_full = [row_dict.get(f) for f in all_fields]
 
-    await manager.broadcast({"type": "data_refresh"})
-    return result
+            await db.execute(
+                f"INSERT INTO queries ({field_names}) VALUES ({placeholders})",
+                row_data_full + [test_set_id, now, now]
+            )
+            existing.add(query_str)
+            imported += 1
+
+            new_id_cursor = await db.execute("SELECT last_insert_rowid()")
+            new_id = (await new_id_cursor.fetchone())[0]
+
+            # Extract DISPIMG images on-demand from ZIP
+            if formula_rows and row_num < len(formula_rows):
+                formula_row = formula_rows[row_num]
+                for col_idx, stype in screenshot_cols.items():
+                    formula_val = formula_row.get(col_idx, '')
+                    if 'DISPIMG' in formula_val:
+                        m = dispimg_re.search(formula_val)
+                        if m:
+                            img_id = m.group(1)
+                            zip_path = name_to_zip_path.get(img_id)
+                            if zip_path:
+                                zf = zipfile.ZipFile(tmp_path)
+                                img_bytes = zf.read(zip_path)
+                                zf.close()
+                                ext = 'png' if img_bytes[:4] == b'\x89PNG' else 'jpg'
+                                filename = f"q{new_id}_{stype}_{int(datetime.now().timestamp())}.{ext}"
+                                filepath = os.path.join(SCREENSHOTS_DIR, filename)
+                                with open(filepath, "wb") as f:
+                                    f.write(img_bytes)
+                                url = f"/static/screenshots/{filename}"
+                                col_name = "text_screenshot_url" if stype == "text" else "ai_screenshot_url"
+                                await db.execute(f"UPDATE queries SET {col_name} = ? WHERE id = ?", [url, new_id])
+
+            row_num += 1
+
+            # Commit every 100 rows to avoid huge transactions
+            if imported % 100 == 0:
+                await db.commit()
+
+        await db.commit()
+        wb.close()
+        await db.close()
+
+        result = {"imported": imported, "duplicates_count": len(duplicates)}
+        if duplicates:
+            result["duplicates"] = duplicates
+
+        await manager.broadcast({"type": "data_refresh"})
+        return result
+
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 @app.get("/api/export/excel")
@@ -1066,21 +1095,22 @@ async def export_report():
 # ============================================================
 
 @app.get("/api/custom-columns")
-async def get_custom_columns():
-    return load_custom_columns()
+async def get_custom_columns(test_set_id: int = 1):
+    return load_custom_columns(test_set_id)
 
 
 @app.post("/api/custom-columns")
 async def add_custom_column(body: dict):
     label = body.get("label", "").strip()
     col_type = body.get("type", "text")  # "text" or "number"
+    test_set_id = body.get("test_set_id", 1)
     if not label:
         raise HTTPException(400, "列名不能为空")
 
     # Generate field name from label (safe identifier)
     field = "custom_" + label.replace(" ", "_").replace("/", "_").replace("（", "_").replace("）", "_")
     # Ensure unique
-    cols = load_custom_columns()
+    cols = load_custom_columns(test_set_id)
     existing_fields = {c["field"] for c in cols}
     existing_labels = {c["label"] for c in cols}
     if label in existing_labels:
@@ -1090,22 +1120,25 @@ async def add_custom_column(body: dict):
 
     new_col = {"field": field, "label": label, "type": col_type}
     cols.append(new_col)
-    save_custom_columns(cols)
+    save_custom_columns(cols, test_set_id)
 
-    # ALTER TABLE
+    # ALTER TABLE (column is shared in DB, just visibility differs per test set)
     col_type_sql = "REAL" if col_type == "number" else "TEXT"
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(f'ALTER TABLE queries ADD COLUMN {field} {col_type_sql}')
-        await db.commit()
+        try:
+            await db.execute(f'ALTER TABLE queries ADD COLUMN {field} {col_type_sql}')
+            await db.commit()
+        except:
+            pass  # column already exists
 
     return new_col
 
 
 @app.delete("/api/custom-columns/{field}")
-async def delete_custom_column(field: str):
-    cols = load_custom_columns()
+async def delete_custom_column(field: str, test_set_id: int = 1):
+    cols = load_custom_columns(test_set_id)
     cols = [c for c in cols if c["field"] != field]
-    save_custom_columns(cols)
+    save_custom_columns(cols, test_set_id)
     return {"ok": True}
 
 

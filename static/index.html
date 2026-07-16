@@ -759,7 +759,8 @@ createApp({
         const loadColumnSettings = (extraCols = []) => {
             const allDefaults = [...DEFAULT_COLUMNS, ...extraCols];
             try {
-                const saved = localStorage.getItem('column_settings');
+                const key = `column_settings_${activeTestSet.value}`;
+                const saved = localStorage.getItem(key);
                 if (!saved) return allDefaults;
                 const savedArr = JSON.parse(saved);
                 const defaultMap = {};
@@ -780,7 +781,7 @@ createApp({
         // Load custom columns from API and merge
         const loadCustomColumns = async () => {
             try {
-                const resp = await fetch('/api/custom-columns');
+                const resp = await fetch(`/api/custom-columns?test_set_id=${activeTestSet.value}`);
                 customColumns.value = await resp.json();
                 const extraCols = customColumns.value.map(c => ({
                     field: c.field, label: c.label, visible: true,
@@ -801,7 +802,7 @@ createApp({
                 const resp = await fetch('/api/custom-columns', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ label: newColLabel.value.trim(), type: newColType.value })
+                    body: JSON.stringify({ label: newColLabel.value.trim(), type: newColType.value, test_set_id: activeTestSet.value })
                 });
                 if (!resp.ok) { const e = await resp.json(); alert(e.detail); return; }
                 const col = await resp.json();
@@ -815,15 +816,16 @@ createApp({
 
         const removeColumn = async (field) => {
             if (!confirm('确定删除此自定义列？')) return;
-            await fetch(`/api/custom-columns/${field}`, { method: 'DELETE' });
+            await fetch(`/api/custom-columns/${field}?test_set_id=${activeTestSet.value}`, { method: 'DELETE' });
             columns.value = columns.value.filter(c => c.field !== field);
             saveColumnSettings();
         };
 
         // Save column settings whenever they change
         const saveColumnSettings = () => {
+            const key = `column_settings_${activeTestSet.value}`;
             const data = columns.value.map(c => ({ field: c.field, visible: c.visible }));
-            localStorage.setItem('column_settings', JSON.stringify(data));
+            localStorage.setItem(key, JSON.stringify(data));
         };
 
         const visibleColumns = computed(() => columns.value.filter(c => c.visible));
@@ -950,6 +952,7 @@ createApp({
             activeTestSet.value = id;
             localStorage.setItem('active_test_set', id);
             loadQueries();
+            loadCustomColumns();
         };
 
         const createTestSet = async () => {
