@@ -209,8 +209,6 @@ def load_report_notes(test_set_id=None):
     else:
         data = {}
     notes = {k: data.get(k, "") for k in REPORT_NOTES_FIELDS}
-    if not notes["badcase"].strip():
-        notes["badcase"] = DEFAULT_BADCASE
     return notes
 
 
@@ -1422,11 +1420,38 @@ async def _load_report_rows(test_set_id):
     return rows
 
 
+async def _prev_dim_means(test_set_id):
+    """Mean per score dimension for the previous test set (id just below)."""
+    if not test_set_id:
+        return None
+    db = await get_db()
+    cur = await db.execute("SELECT id FROM test_sets WHERE id < ? ORDER BY id DESC LIMIT 1", [test_set_id])
+    row = await cur.fetchone()
+    if not row:
+        await db.close()
+        return None
+    prev_id = row[0]
+    cur = await db.execute("SELECT * FROM queries WHERE test_set_id = ?", [prev_id])
+    prows = [dict(r) for r in await cur.fetchall()]
+    await db.close()
+    means = {}
+    for f in SCORE_FIELDS:
+        vals = [r[f] for r in prows if r.get(f) is not None]
+        if vals:
+            means[f] = sum(vals) / len(vals)
+    return means
+
+
 @app.get("/api/report-data")
 async def report_data(test_set_id: int = QueryParam(default=None)):
     """返回结构化报告数据，供网页直接展示"""
     rows = await _load_report_rows(test_set_id)
     model = build_report_model(rows)
+    prev_means = await _prev_dim_means(test_set_id)
+    if prev_means:
+        for d in model['dimensions']:
+            pm = prev_means.get(d['field'])
+            d['delta'] = round(d['mean'] - pm, 2) if pm is not None else None
     model['notes'] = load_report_notes(test_set_id)
     return model
 
@@ -1446,6 +1471,84 @@ async def get_report_notes(test_set_id: int = QueryParam(default=None)):
 @app.post("/api/report-notes")
 async def post_report_notes(notes: ReportNotes, test_set_id: int = QueryParam(default=None)):
     return save_report_notes(notes.dict(), test_set_id)
+
+
+def render_badcase_html(doc, html_str):
+    """Render bad-case rich-text HTML (tables + paragraphs) into a docx document."""
+    import re as _re
+    import html as _htmllib
+    from html.parser import HTMLParser
+
+    class _P(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.blocks = []
+            self.in_table = False
+            self.table = None
+            self.row = None
+            self.cell = None
+            self.para = []
+
+        def _flush(self):
+            t = ''.join(self.para).strip()
+            if t:
+                self.blocks.append(('para', t))
+            self.para = []
+
+        def handle_starttag(self, tag, attrs):
+            if tag == 'table':
+                self._flush(); self.in_table = True; self.table = []
+            elif tag == 'tr' and self.in_table:
+                self.row = []
+            elif tag in ('td', 'th') and self.in_table:
+                self.cell = []
+            elif tag == 'br':
+                (self.cell if (self.in_table and self.cell is not None) else self.para).append('\n')
+
+        def handle_endtag(self, tag):
+            if tag == 'table' and self.in_table:
+                self.blocks.append(('table', self.table)); self.in_table = False; self.table = None
+            elif tag == 'tr' and self.in_table and self.row is not None:
+                self.table.append(self.row); self.row = None
+            elif tag in ('td', 'th') and self.in_table and self.cell is not None:
+                if self.row is not None:
+                    self.row.append(''.join(self.cell).strip())
+                self.cell = None
+            elif tag in ('p', 'div') and not self.in_table:
+                self._flush()
+
+        def handle_data(self, data):
+            if self.in_table and self.cell is not None:
+                self.cell.append(data)
+            elif not self.in_table:
+                self.para.append(data)
+
+    p = _P()
+    try:
+        p.feed(html_str or '')
+    except Exception:
+        pass
+    p._flush()
+
+    if not p.blocks:
+        text = _htmllib.unescape(_re.sub(r'<[^>]+>', '', html_str or '')).strip()
+        if text:
+            doc.add_paragraph(text)
+        return
+
+    for kind, payload in p.blocks:
+        if kind == 'para':
+            doc.add_paragraph(_htmllib.unescape(payload))
+        elif kind == 'table' and payload:
+            ncols = max((len(r) for r in payload), default=0)
+            if ncols == 0:
+                continue
+            t = doc.add_table(rows=0, cols=ncols)
+            t.style = 'Table Grid'
+            for r in payload:
+                cells = t.add_row().cells
+                for i in range(ncols):
+                    cells[i].text = _htmllib.unescape(r[i]) if i < len(r) else ''
 
 
 @app.post("/api/export/report")
@@ -1683,8 +1786,7 @@ async def export_report(test_set_id: int = QueryParam(default=None)):
     # === 四、bad case梳理 ===
     doc.add_heading('四、bad case梳理', level=1)
     if notes.get('badcase', '').strip():
-        for line in notes['badcase'].strip().split('\n'):
-            doc.add_paragraph(line)
+        render_badcase_html(doc, notes['badcase'])
     else:
         p = doc.add_paragraph()
         p.add_run('4.1 问题汇总').bold = True

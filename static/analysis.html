@@ -87,6 +87,29 @@
         .report .placeholder { color: #86868b; font-style: italic; }
         .report .note-edit { width: 100%; min-height: 70px; border: 1px solid #d2d2d7; border-radius: 8px; padding: 10px; font-family: inherit; font-size: 14px; line-height: 1.7; resize: vertical; margin: 4px 0 12px; }
         .report .note-edit:focus { outline: none; border-color: #0071e3; }
+        /* Bad case rich editor */
+        .bc-toolbar { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; position: sticky; top: 0; background: #fff; padding: 6px 0; z-index: 5; }
+        .bc-toolbar button { border: 1px solid #d2d2d7; background: #f5f5f7; border-radius: 6px; padding: 4px 10px; font-size: 13px; cursor: pointer; line-height: 1.2; }
+        .bc-toolbar button:hover { background: #e8e8ed; }
+        .bc-toolbar .sep { width: 1px; background: #d2d2d7; margin: 0 2px; }
+        .bc-editor { border: 1px solid #d2d2d7; border-radius: 8px; padding: 12px 14px; min-height: 200px; font-size: 14px; line-height: 1.7; outline: none; overflow-x: auto; }
+        .bc-editor:focus { border-color: #0071e3; }
+        .bc-editor table, .bc-view table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+        .bc-editor td, .bc-editor th, .bc-view td, .bc-view th { border: 1px solid #d2d2d7; padding: 6px 8px; min-width: 50px; vertical-align: top; }
+        .bc-editor img, .bc-view img { max-width: 220px; height: auto; border-radius: 4px; }
+        .bc-view { font-size: 14px; line-height: 1.7; overflow-x: auto; }
+        .bc-view img { cursor: zoom-in; }
+        .img-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; }
+        .img-modal img { max-width: 92vw; max-height: 92vh; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+        .img-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #fff; background: rgba(255,255,255,0.12); border-radius: 50%; cursor: pointer; user-select: none; transition: background 0.15s; }
+        .img-nav:hover { background: rgba(255,255,255,0.28); }
+        .img-nav.prev { left: 32px; }
+        .img-nav.next { right: 32px; }
+        .img-count { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; background: rgba(0,0,0,0.5); padding: 4px 14px; border-radius: 980px; }
+        .bc-float { position: fixed; transform: translate(-50%, -100%); z-index: 3000; display: flex; align-items: center; gap: 3px; background: #1d1d1f; padding: 5px 7px; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.28); }
+        .bc-float button { border: none; background: #3a3a3c; color: #fff; border-radius: 5px; padding: 3px 8px; font-size: 12px; cursor: pointer; line-height: 1.3; }
+        .bc-float button:hover { background: #545456; }
+        .bc-float .sep { width: 1px; height: 16px; background: #545456; margin: 0 2px; }
     </style>
 </head>
 <body>
@@ -136,48 +159,84 @@
                 </div>
             </div>
 
+            <div v-if="editing" class="bc-toolbar">
+                <button @mousedown.prevent="rt('bold')" title="加粗"><b>B</b></button>
+                <button @mousedown.prevent="rt('italic')" title="斜体"><i>I</i></button>
+                <button @mousedown.prevent="rt('underline')" title="下划线" style="text-decoration:underline">U</button>
+                <button @mousedown.prevent="rt('strikeThrough')" title="删除线" style="text-decoration:line-through">S</button>
+                <span class="sep"></span>
+                <button @mousedown.prevent="hilite('#fff3b0')" style="background:#fff3b0" title="黄色高亮">高亮</button>
+                <button @mousedown.prevent="hilite('#ffd0d0')" style="background:#ffd0d0" title="红色高亮">红</button>
+                <button @mousedown.prevent="hilite('#c8f0d0')" style="background:#c8f0d0" title="绿色高亮">绿</button>
+                <button @mousedown.prevent="hilite('transparent')" title="清除高亮">清除</button>
+                <span class="sep"></span>
+                <button @mousedown.prevent="insertTable" title="插入表格">▦ 插入表格</button>
+                <button @mousedown.prevent="tableOp('addRow')">+行</button>
+                <button @mousedown.prevent="tableOp('addCol')">+列</button>
+                <button @mousedown.prevent="tableOp('delRow')">删行</button>
+                <button @mousedown.prevent="tableOp('delCol')">删列</button>
+                <span class="sep"></span>
+                <button @mousedown.prevent="rt('removeFormat')" title="清除格式">清格式</button>
+            </div>
+
             <h2>一、核心结论</h2>
             <p class="lead">
                 AI搜索整体{{ report.conclusion.trend }}文本搜索（胜率{{ report.conclusion.win_rate }}% vs {{ report.conclusion.lose_rate }}%）<template v-if="report.conclusion.worst">，<span class="bad">{{ report.conclusion.worst.label }}</span>维度表现不足（均分{{ report.conclusion.worst.mean }}，{{ report.conclusion.worst.low_rate }}%低分率）</template>。
             </p>
             <p v-if="report.strong.length"><b>AI搜索强于文本搜：</b>{{ report.strong.map(s => `${s.cat}(胜率${s.win}/${s.vs_n})`).join('、') }}</p>
             <p v-if="report.weak.length"><b>AI搜索弱于文本搜：</b>{{ report.weak.map(s => `${s.cat}(胜率${s.win}/${s.vs_n})`).join('、') }}</p>
-            <template v-if="editing">
-                <p><b>结论补充：</b></p>
-                <textarea v-model="notes.conclusion" class="note-edit" placeholder="补充说明（每行一段，可留空）"></textarea>
-                <p><b>本周可重点提升：</b></p>
-                <textarea v-model="notes.priorities" class="note-edit" placeholder="例：地图质量 / 相关性召回 / 缺图漏图"></textarea>
-            </template>
-            <template v-else>
-                <p v-if="notes.conclusion" v-for="(l,i) in notes.conclusion.split('\n')" :key="'c'+i">{{ l }}</p>
-                <p><b>本周可重点提升：</b></p>
-                <template v-if="notes.priorities">
-                    <p v-for="(l,i) in notes.priorities.split('\n')" :key="'p'+i">{{ l }}</p>
-                </template>
-                <p v-else class="placeholder">（根据bad case人工总结，点「编辑文字」填写）</p>
-            </template>
+            <div v-if="editing" class="bc-editor" contenteditable="true" data-field="conclusion" @input="onFieldInput"></div>
+            <div v-else>
+                <div v-if="notes.conclusion" class="bc-view" v-html="notes.conclusion" @click="zoomImg"></div>
+                <p v-else class="placeholder">（结论补充，点「编辑文字」填写，可粘贴/加粗/高亮）</p>
+            </div>
+            <p><b>本周可重点提升：</b></p>
+            <div v-if="editing" class="bc-editor" contenteditable="true" data-field="priorities" @input="onFieldInput"></div>
+            <div v-else>
+                <div v-if="notes.priorities" class="bc-view" v-html="notes.priorities" @click="zoomImg"></div>
+                <p v-else class="placeholder">（根据bad case人工总结，例：地图质量 / 相关性召回 / 缺图漏图）</p>
+            </div>
 
             <h2>二、评测数据总览</h2>
             <h3>2.1 统计数据</h3>
-            <textarea v-if="editing" v-model="notes.stats" class="note-edit" placeholder="点击率QV、游玩平均时长、复玩率等线上业务指标"></textarea>
-            <template v-else>
-                <p v-if="notes.stats" v-for="(l,i) in notes.stats.split('\n')" :key="'s'+i">{{ l }}</p>
-                <p v-else class="placeholder">（点击率QV、游玩平均时长、复玩率等线上业务指标，点「编辑文字」填写）</p>
-            </template>
+            <div v-if="editing" class="bc-editor" contenteditable="true" data-field="stats" @input="onFieldInput"></div>
+            <div v-else>
+                <div v-if="notes.stats" class="bc-view" v-html="notes.stats" @click="zoomImg"></div>
+                <p v-else class="placeholder">（点击率QV、游玩平均时长、复玩率等线上业务指标，可粘贴截图，点「编辑文字」填写）</p>
+            </div>
 
             <h3>2.2 各维度详细评分</h3>
             <table>
                 <tr><th class="left">维度</th><th>均分(/5)</th><th>有效样本</th><th>低分率(≤2)</th><th>备注</th></tr>
                 <tr v-for="d in report.dimensions" :key="d.field">
                     <td class="left">{{ d.label }}</td>
-                    <td>{{ d.mean.toFixed(2) }}</td>
+                    <td>{{ d.mean.toFixed(2) }}
+                        <span v-if="d.delta != null && d.delta !== 0" :style="{color: d.delta > 0 ? '#3ba272' : '#ee6666', fontWeight:600, marginLeft:'4px'}">({{ d.delta > 0 ? '+' : '' }}{{ d.delta.toFixed(2) }})</span>
+                        <span v-else-if="d.delta === 0" style="color:#999;font-weight:600;margin-left:4px">(±0)</span>
+                    </td>
                     <td>{{ d.count }}</td>
                     <td>{{ d.low_rate }}%</td>
                     <td :class="{warn: d.note.includes('改进'), ok: d.note.includes('较好')}">{{ d.note }}</td>
                 </tr>
             </table>
+            <p class="placeholder" style="font-size:12px">均分后括号为与上一测试集的同比变化（绿升红降）</p>
             <p><b>总体对比（有效{{ report.overall_vs.total }}条）：</b>AI优={{ report.overall_vs.win }}({{ report.overall_vs.win_rate }}%), 持平={{ report.overall_vs.draw }}({{ report.overall_vs.draw_rate }}%), AI劣={{ report.overall_vs.lose }}({{ report.overall_vs.lose_rate }}%)</p>
-            <p class="placeholder">（2.3 各业务类型维度得分图、2.4 AI vs 文本搜对比图见下方可视化图表，Word报告中会内嵌）</p>
+
+            <h3>2.3 各业务类型关键维度得分</h3>
+            <div class="section-header" style="border:none;padding:0;margin-bottom:6px">
+                <span></span>
+                <button class="export-btn" @click="exportChart('dimChart')">📷 导出 PNG</button>
+            </div>
+            <div class="chart-container" ref="dimChart" style="height:440px"></div>
+            <div class="text-analysis" v-html="dimText"></div>
+
+            <h3>2.4 AI搜索 vs 文本搜索对比</h3>
+            <div class="section-header" style="border:none;padding:0;margin-bottom:6px">
+                <span></span>
+                <button class="export-btn" @click="exportChart('vsChart')">📷 导出 PNG</button>
+            </div>
+            <div class="chart-container" ref="vsChart" style="height:440px"></div>
+            <div class="text-analysis" v-html="vsText"></div>
 
             <h3>2.5 按query特征切分</h3>
             <table>
@@ -206,64 +265,10 @@
             </table>
 
             <h2>四、bad case梳理</h2>
-            <textarea v-if="editing" v-model="notes.badcase" class="note-edit" style="min-height:120px" placeholder="按业务类型分节梳理典型bad case（query/期望结果/实际问题/可能原因）"></textarea>
-            <template v-else>
-                <p v-if="notes.badcase" v-for="(l,i) in notes.badcase.split('\n')" :key="'b'+i">{{ l }}</p>
-                <p v-else class="placeholder">（按业务类型分节梳理典型bad case，点「编辑文字」填写）</p>
-            </template>
-        </div>
-
-        <!-- Dimensions Chart -->
-        <div class="section">
-            <div class="section-header">
-                <span class="section-title">各维度得分</span>
-                <button class="export-btn" @click="exportChart('dimChart')">📷 导出 PNG</button>
-            </div>
-            <div class="section-body">
-                <div class="chart-container" ref="dimChart"></div>
-                <div class="text-analysis" v-html="dimText"></div>
-            </div>
-        </div>
-
-        <!-- VS Text Search -->
-        <div class="section">
-            <div class="section-header">
-                <span class="section-title">AI 搜 vs 文本搜</span>
-                <button class="export-btn" @click="exportChart('vsChart')">📷 导出 PNG</button>
-            </div>
-            <div class="section-body">
-                <div class="chart-container" ref="vsChart"></div>
-                <div class="text-analysis" v-html="vsText"></div>
-            </div>
-        </div>
-
-        <!-- By Category -->
-        <div class="section">
-            <div class="section-header">
-                <span class="section-title">按业务分类</span>
-                <button class="export-btn" @click="exportChart('catChart')">📷 导出 PNG</button>
-            </div>
-            <div class="section-body full">
-                <div class="chart-container" ref="catChart" style="height:420px"></div>
-            </div>
-            <div class="text-analysis" style="margin-top:16px" v-html="catText"></div>
-        </div>
-
-        <!-- By Query Level & Frequency -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:24px">
-            <div class="section" style="margin-bottom:0">
-                <div class="section-header">
-                    <span class="section-title">按 Query 层级</span>
-                    <button class="export-btn" @click="exportChart('levelChart')">📷</button>
-                </div>
-                <div class="chart-container" ref="levelChart" style="height:300px"></div>
-            </div>
-            <div class="section" style="margin-bottom:0">
-                <div class="section-header">
-                    <span class="section-title">按频率层级</span>
-                    <button class="export-btn" @click="exportChart('freqChart')">📷</button>
-                </div>
-                <div class="chart-container" ref="freqChart" style="height:300px"></div>
+            <div v-if="editing" class="bc-editor" contenteditable="true" data-field="badcase" @input="onFieldInput" style="min-height:240px"></div>
+            <div v-else>
+                <div v-if="notes.badcase" class="bc-view" v-html="notes.badcase" @click="zoomImg"></div>
+                <p v-else class="placeholder">（点「编辑文字」后可从 POPO 文档直接复制粘贴 bad case，保留表格/加粗/图片，也可插入表格并增删行列）</p>
             </div>
         </div>
 
@@ -305,6 +310,28 @@
     </div>
 
     <div class="toast" v-if="toast">{{ toast }}</div>
+    <div v-if="modalImage" class="img-modal" @click="modalImage = null">
+        <div v-if="modalImages.length > 1" class="img-nav prev" @click.stop="modalNav(-1)">‹</div>
+        <img :src="modalImage" @click.stop />
+        <div v-if="modalImages.length > 1" class="img-nav next" @click.stop="modalNav(1)">›</div>
+        <div v-if="modalImages.length > 1" class="img-count">{{ modalIdx + 1 }} / {{ modalImages.length }}</div>
+    </div>
+    <div v-show="floatTb.show" class="bc-float" :style="{left: floatTb.x + 'px', top: floatTb.y + 'px'}" @mousedown.prevent>
+        <button @mousedown.prevent="rt('bold')" title="加粗"><b>B</b></button>
+        <button @mousedown.prevent="rt('italic')" title="斜体"><i>I</i></button>
+        <button @mousedown.prevent="rt('underline')" title="下划线" style="text-decoration:underline">U</button>
+        <button @mousedown.prevent="rt('strikeThrough')" title="删除线" style="text-decoration:line-through">S</button>
+        <span class="sep"></span>
+        <button @mousedown.prevent="hilite('#fff3b0')" style="background:#fff3b0;color:#333" title="黄">高</button>
+        <button @mousedown.prevent="hilite('#ffd0d0')" style="background:#ffd0d0;color:#333" title="红">红</button>
+        <button @mousedown.prevent="hilite('#c8f0d0')" style="background:#c8f0d0;color:#333" title="绿">绿</button>
+        <button @mousedown.prevent="hilite('transparent')" title="清除高亮">清</button>
+        <span class="sep"></span>
+        <button @mousedown.prevent="tableOp('addRow')" title="表格增行">+行</button>
+        <button @mousedown.prevent="tableOp('addCol')" title="表格增列">+列</button>
+        <button @mousedown.prevent="tableOp('delRow')" title="表格删行">-行</button>
+        <button @mousedown.prevent="tableOp('delCol')" title="表格删列">-列</button>
+    </div>
 </div>
 
 <script>
@@ -329,6 +356,10 @@ createApp({
         const notes = ref({ conclusion: '', priorities: '', stats: '', badcase: '' });
         const editing = ref(false);
         const notesSaving = ref(false);
+        const bcEditor = ref(null);
+        const modalImage = ref(null);
+        const modalImages = ref([]);
+        const modalIdx = ref(0);
         const aiText = ref('');
         const aiLoading = ref(false);
         const reportLoading = ref(false);
@@ -380,80 +411,42 @@ createApp({
             // Dispose old instances so switching test set re-renders with fresh data
             Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].dispose(); charts[k] = null; } });
 
-            // Dimensions bar chart - gradient bars
-            const dims = data.value.dimensions;
+            // 2.3 各业务类型关键维度得分 - grouped bar with pass line
+            const cats = (report.value && report.value.categories) ? report.value.categories : [];
             charts.dimChart = echarts.init(dimChart.value);
             charts.dimChart.setOption({
-                tooltip: { trigger: 'axis', formatter: (p) => { const d = dims[p[0].dataIndex]; return `${DIM_LABELS[d.name]}<br/>均分: <b>${d.mean}</b><br/>范围: ${d.min}~${d.max}<br/>有效数: ${d.count}`; } },
-                xAxis: { type: 'category', data: dims.map(d => DIM_LABELS[d.name] || d.name), axisLabel: { rotate: 15, color: '#666' } },
-                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
-                series: [{ type: 'bar', data: dims.map(d => d.mean), itemStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{offset: 0, color: '#73c0de'}, {offset: 1, color: '#5470c6'}]), borderRadius: [6,6,0,0] }, barWidth: '50%' }],
-                grid: { left: 50, right: 20, bottom: 60, top: 20 }
+                title: { text: '各业务类型关键维度得分', left: 'center', textStyle: { fontSize: 15 } },
+                tooltip: { trigger: 'axis' },
+                legend: { top: 26, textStyle: { color: '#666' } },
+                xAxis: { type: 'category', data: cats.map(c => `${c.cat}\n(n=${c.n})`), axisLabel: { color: '#666', interval: 0, fontSize: 11 } },
+                yAxis: { type: 'value', max: 5, name: '得分（满分5分）', splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                series: [
+                    { name: '相关性', type: 'bar', data: cats.map(c => c.relevance), itemStyle: { color: '#5470c6' }, label: { show: true, position: 'top', fontSize: 10 } },
+                    { name: '排序合理性', type: 'bar', data: cats.map(c => c.ranking), itemStyle: { color: '#91cc75' }, label: { show: true, position: 'top', fontSize: 10 } },
+                    { name: '质量门槛（与文本搜索对比）', type: 'bar', data: cats.map(c => c.quality), itemStyle: { color: '#fac858' }, label: { show: true, position: 'top', fontSize: 10 },
+                      markLine: { silent: true, symbol: 'none', lineStyle: { color: '#ee6666', type: 'dashed' }, data: [{ yAxis: 3, name: '及格线' }], label: { formatter: '及格线(3分)', color: '#ee6666', position: 'insideEndTop' } } },
+                ],
+                grid: { left: 55, right: 20, bottom: 50, top: 70 }
             });
 
-            // VS chart (pie) - softer colors
-            const vs = data.value.vs_text;
+            // 2.4 AI vs 文本搜索 - horizontal stacked + net win-rate
             charts.vsChart = echarts.init(vsChart.value);
+            const nets = cats.map(c => c.vs_n ? Math.round((c.win - c.lose) / c.vs_n * 100) : 0);
             charts.vsChart.setOption({
-                tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-                series: [{
-                    type: 'pie', radius: ['40%', '70%'],
-                    data: [
-                        { value: vs.better, name: 'AI更优', itemStyle: { color: '#91cc75' } },
-                        { value: vs.same, name: '持平', itemStyle: { color: '#fac858' } },
-                        { value: vs.worse, name: 'AI更差', itemStyle: { color: '#ee6666' } },
-                    ],
-                    label: { formatter: '{b}\n{d}%', fontSize: 13 },
-                    emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.2)' } }
-                }]
-            });
-
-            // Category chart - coordinated multi-series
-            const cats = data.value.by_category.slice(0, 8);
-            charts.catChart = echarts.init(catChart.value);
-            charts.catChart.setOption({
-                tooltip: { trigger: 'axis' },
-                legend: { top: 0, textStyle: { color: '#666' } },
-                xAxis: { type: 'category', data: cats.map(c => c.category), axisLabel: { rotate: 15, color: '#666' } },
-                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
+                title: { text: 'AI搜索 vs 文本搜索 对比结果', left: 'center', textStyle: { fontSize: 15 } },
+                tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+                legend: { data: ['AI优', '持平', 'AI劣'], top: 26, textStyle: { color: '#666' } },
+                xAxis: { type: 'value', name: 'query数量' },
+                yAxis: { type: 'category', data: cats.map(c => c.cat), inverse: true, axisLabel: { color: '#666' } },
                 series: [
-                    { name: 'AI综合分', type: 'bar', data: cats.map(c => c.ai_avg), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
-                    { name: '准确性', type: 'bar', data: cats.map(c => c.dims.accuracy), itemStyle: { color: '#fac858', borderRadius: [4,4,0,0] } },
-                    { name: '点击欲望', type: 'bar', data: cats.map(c => c.dims.click_desire), itemStyle: { color: '#9a60b4', borderRadius: [4,4,0,0] } },
+                    { name: 'AI优', type: 'bar', stack: 'vs', data: cats.map(c => c.win), itemStyle: { color: '#91cc75' } },
+                    { name: '持平', type: 'bar', stack: 'vs', data: cats.map(c => c.draw), itemStyle: { color: '#fac858' } },
+                    { name: 'AI劣', type: 'bar', stack: 'vs', data: cats.map(c => c.lose), itemStyle: { color: '#ee6666' } },
+                    { name: 'net', type: 'bar', stack: 'vs', data: cats.map(() => 0), itemStyle: { color: 'transparent' },
+                      label: { show: true, position: 'right', formatter: (p) => { const v = nets[p.dataIndex]; const tag = v > 0 ? 'g' : (v < 0 ? 'r' : 'n'); return `{${tag}|${v > 0 ? '+' : ''}${v}%}`; },
+                        rich: { g: { color: '#3ba272', fontWeight: 'bold' }, r: { color: '#ee6666', fontWeight: 'bold' }, n: { color: '#999', fontWeight: 'bold' } } } },
                 ],
-                grid: { left: 50, right: 20, bottom: 60, top: 40 }
-            });
-
-            // Query level chart
-            const lvl = data.value.by_query_level;
-            charts.levelChart = echarts.init(levelChart.value);
-            const lvlDims = ['relevance','accuracy','click_desire'];
-            charts.levelChart.setOption({
-                tooltip: { trigger: 'axis' },
-                legend: { top: 0, textStyle: { color: '#666' } },
-                xAxis: { type: 'category', data: lvlDims.map(d => DIM_LABELS[d]) },
-                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
-                series: [
-                    { name: `短query(${lvl.short.n})`, type: 'bar', data: lvlDims.map(d => lvl.short.dims[d]), itemStyle: { color: '#73c0de', borderRadius: [4,4,0,0] } },
-                    { name: `长query(${lvl.long.n})`, type: 'bar', data: lvlDims.map(d => lvl.long.dims[d]), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
-                ],
-                grid: { left: 40, right: 10, bottom: 40, top: 40 }
-            });
-
-            // Frequency chart
-            const freqs = data.value.by_frequency;
-            const freqKeys = Object.keys(freqs).filter(k => k !== '未知');
-            charts.freqChart = echarts.init(freqChart.value);
-            charts.freqChart.setOption({
-                tooltip: { trigger: 'axis' },
-                legend: { top: 0, textStyle: { color: '#666' } },
-                xAxis: { type: 'category', data: freqKeys },
-                yAxis: { type: 'value', max: 5, splitLine: { lineStyle: { type: 'dashed', color: '#eee' } } },
-                series: [
-                    { name: 'AI综合分', type: 'bar', data: freqKeys.map(k => freqs[k].dims.ai_avg), itemStyle: { color: '#5470c6', borderRadius: [4,4,0,0] } },
-                    { name: '准确性', type: 'bar', data: freqKeys.map(k => freqs[k].dims.accuracy), itemStyle: { color: '#91cc75', borderRadius: [4,4,0,0] } },
-                ],
-                grid: { left: 40, right: 10, bottom: 40, top: 40 }
+                grid: { left: 90, right: 60, bottom: 40, top: 70 }
             });
         };
 
@@ -508,7 +501,108 @@ createApp({
             aiLoading.value = false;
         };
 
+        const syncEditor = (el) => { if (el && el.dataset && el.dataset.field) notes.value[el.dataset.field] = el.innerHTML; };
+        const focusedEditor = () => {
+            let n = window.getSelection().anchorNode;
+            while (n && !(n.classList && n.classList.contains('bc-editor'))) n = n.parentNode;
+            return n;
+        };
+        const onFieldInput = (e) => syncEditor(e.currentTarget);
+        const syncAll = () => document.querySelectorAll('.bc-editor[data-field]').forEach(syncEditor);
+        const zoomImg = (e) => {
+            if (!e.target || e.target.tagName !== 'IMG') return;
+            const imgs = Array.from(document.querySelectorAll('.bc-view img'));
+            modalImages.value = imgs.map(i => i.src);
+            modalIdx.value = Math.max(0, imgs.indexOf(e.target));
+            modalImage.value = e.target.src;
+        };
+        const modalNav = (d) => {
+            if (modalImages.value.length < 2) return;
+            modalIdx.value = (modalIdx.value + d + modalImages.value.length) % modalImages.value.length;
+            modalImage.value = modalImages.value[modalIdx.value];
+        };
+
+        // Floating format toolbar that follows the text selection inside editors
+        const floatTb = ref({ show: false, x: 0, y: 0 });
+        const updateFloatTb = () => {
+            if (!editing.value) { floatTb.value.show = false; return; }
+            const sel = window.getSelection();
+            if (!sel || sel.isCollapsed || sel.rangeCount === 0) { floatTb.value.show = false; return; }
+            let n = sel.anchorNode;
+            while (n && !(n.classList && n.classList.contains('bc-editor'))) n = n.parentNode;
+            if (!n) { floatTb.value.show = false; return; }
+            const rect = sel.getRangeAt(0).getBoundingClientRect();
+            if (!rect.width && !rect.height) { floatTb.value.show = false; return; }
+            floatTb.value = { show: true, x: rect.left + rect.width / 2, y: rect.top - 6 };
+        };
+        onMounted(() => {
+            document.addEventListener('mouseup', () => setTimeout(updateFloatTb, 0));
+            document.addEventListener('keyup', () => setTimeout(updateFloatTb, 0));
+            window.addEventListener('scroll', () => { if (floatTb.value.show) floatTb.value.show = false; }, true);
+            window.addEventListener('keydown', (e) => {
+                if (!modalImage.value) return;
+                if (e.key === 'ArrowLeft') modalNav(-1);
+                else if (e.key === 'ArrowRight') modalNav(1);
+                else if (e.key === 'Escape') modalImage.value = null;
+            });
+        });
+
+        const rt = (cmd) => { document.execCommand(cmd, false, null); syncEditor(focusedEditor()); };
+        const hilite = (color) => {
+            if (!document.execCommand('hiliteColor', false, color)) document.execCommand('backColor', false, color);
+            syncEditor(focusedEditor());
+        };
+        const insertTable = () => {
+            if (!focusedEditor()) { showToast('请先点进一个可编辑区域'); return; }
+            const rows = 3, cols = 4;
+            let html = '<table style="border-collapse:collapse;width:100%"><tbody>';
+            for (let r = 0; r < rows; r++) {
+                html += '<tr>';
+                for (let c = 0; c < cols; c++) html += '<td style="border:1px solid #d2d2d7;padding:6px 8px;min-width:50px">&nbsp;</td>';
+                html += '</tr>';
+            }
+            html += '</tbody></table><p><br></p>';
+            document.execCommand('insertHTML', false, html);
+            syncEditor(focusedEditor());
+        };
+        const getCell = () => {
+            let n = window.getSelection().anchorNode;
+            while (n && n.nodeName !== 'TD' && n.nodeName !== 'TH') n = n.parentNode;
+            return n;
+        };
+        const tableOp = (op) => {
+            const cell = getCell();
+            if (!cell) { showToast('请先把光标点进表格单元格'); return; }
+            const tr = cell.parentNode;
+            const table = tr.closest('table');
+            const ci = Array.from(tr.children).indexOf(cell);
+            const rows = Array.from(table.rows);
+            if (op === 'addRow') {
+                const nr = tr.cloneNode(true);
+                nr.querySelectorAll('td,th').forEach(td => td.innerHTML = '&nbsp;');
+                tr.after(nr);
+            } else if (op === 'delRow') {
+                if (rows.length > 1) tr.remove();
+            } else if (op === 'addCol') {
+                rows.forEach(row => {
+                    const cRef = row.children[ci] || row.lastElementChild;
+                    const nc = cRef.cloneNode(false);
+                    nc.innerHTML = '&nbsp;';
+                    cRef.after(nc);
+                });
+            } else if (op === 'delCol') {
+                if (tr.children.length > 1) rows.forEach(row => { if (row.children[ci]) row.children[ci].remove(); });
+            }
+            syncEditor(focusedEditor());
+        };
+
+        // Populate all rich editors when entering edit mode
+        watch(editing, (val) => {
+            if (val) nextTick(() => document.querySelectorAll('.bc-editor[data-field]').forEach(el => { el.innerHTML = notes.value[el.dataset.field] || ''; }));
+        });
+
         const saveNotes = async () => {
+            syncAll();
             notesSaving.value = true;
             try {
                 const res = await fetch(`/api/report-notes?test_set_id=${activeTestSet.value}`, {
@@ -554,7 +648,7 @@ createApp({
             generateText();
         });
 
-        return { data, report, notes, editing, notesSaving, saveNotes, dimChart, vsChart, catChart, levelChart, freqChart, dimText, vsText, catText, aiText, aiHtml, aiLoading, reportLoading, toast, exportChart, getAiAnalysis, exportReport, testSets, activeTestSet };
+        return { data, report, notes, editing, notesSaving, saveNotes, onFieldInput, zoomImg, modalImage, modalImages, modalIdx, modalNav, floatTb, rt, hilite, insertTable, tableOp, dimChart, vsChart, catChart, levelChart, freqChart, dimText, vsText, catText, aiText, aiHtml, aiLoading, reportLoading, toast, exportChart, getAiAnalysis, exportReport, testSets, activeTestSet };
     }
 }).mount('#app');
 </script>
