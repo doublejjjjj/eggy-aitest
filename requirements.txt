@@ -4,3 +4,7 @@ python-multipart
 httpx
 aiosqlite
 openpyxl
+python-docx
+matplotlib
+numpy
+pillow

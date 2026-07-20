@@ -13,10 +13,10 @@
         .header { background: rgba(255,255,255,0.72); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(0,0,0,0.08); padding: 14px 32px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; }
         .header h1 { font-size: 20px; font-weight: 600; }
         .header-left { display: flex; align-items: center; gap: 24px; }
-        nav { display: flex; gap: 4px; }
-        nav a { padding: 6px 14px; border-radius: 980px; text-decoration: none; font-size: 13px; font-weight: 500; }
-        nav a.active { background: #0071e3; color: white; }
-        nav a:not(.active) { color: #1d1d1f; border: 1px solid #d2d2d7; }
+        nav { display: flex; align-items: center; gap: 14px; }
+        nav a { text-decoration: none; font-size: 14px; font-weight: 500; color: #86868b; }
+        nav a.active { color: #1d1d1f; font-weight: 600; }
+        nav .sep { color: #d2d2d7; }
         .header-actions { display: flex; gap: 10px; }
         .btn { padding: 8px 18px; border: none; border-radius: 980px; cursor: pointer; font-size: 14px; font-weight: 500; transition: all 0.2s; }
         .btn-primary { background: #0071e3; color: white; }
@@ -68,6 +68,25 @@
         .export-btn:hover { background: #e8e8ed; }
 
         .toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 24px; background: #1d1d1f; color: white; border-radius: 980px; font-size: 14px; z-index: 999; }
+
+        /* Report view */
+        .report { background: white; border-radius: 16px; padding: 32px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+        .report h2 { font-size: 22px; color: #366091; margin: 24px 0 12px; }
+        .report h2:first-child { margin-top: 0; }
+        .report h3 { font-size: 16px; margin: 18px 0 8px; }
+        .report .meta { color: #86868b; font-size: 13px; margin-bottom: 8px; }
+        .report .lead { font-weight: 600; font-size: 15px; line-height: 1.7; }
+        .report .lead .bad { color: #ff3b30; }
+        .report p { line-height: 1.8; margin: 6px 0; }
+        .report table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 10px 0 18px; }
+        .report th, .report td { border: 1px solid #e0e0e0; padding: 7px 10px; text-align: center; }
+        .report th { background: #f5f5f7; font-weight: 600; }
+        .report td.left, .report th.left { text-align: left; }
+        .report .warn { color: #ff3b30; font-weight: 600; }
+        .report .ok { color: #34c759; font-weight: 600; }
+        .report .placeholder { color: #86868b; font-style: italic; }
+        .report .note-edit { width: 100%; min-height: 70px; border: 1px solid #d2d2d7; border-radius: 8px; padding: 10px; font-family: inherit; font-size: 14px; line-height: 1.7; resize: vertical; margin: 4px 0 12px; }
+        .report .note-edit:focus { outline: none; border-color: #0071e3; }
     </style>
 </head>
 <body>
@@ -77,11 +96,12 @@
             <h1>搜索评测系统</h1>
             <nav>
                 <a href="/">数据管理</a>
+                <span class="sep">|</span>
                 <a href="/analysis" class="active">可视化分析</a>
             </nav>
         </div>
         <div class="header-actions">
-            <select v-model="activeTestSet" @change="loadData" style="padding:6px 12px;border-radius:8px;border:1px solid #d2d2d7;font-size:13px;margin-right:8px">
+            <select v-model="activeTestSet" style="padding:6px 12px;border-radius:8px;border:1px solid #d2d2d7;font-size:13px;margin-right:8px">
                 <option v-for="ts in testSets" :key="ts.id" :value="ts.id">{{ ts.name }}</option>
             </select>
             <button class="btn btn-primary" @click="getAiAnalysis" :disabled="aiLoading">🤖 AI 深度分析</button>
@@ -104,6 +124,93 @@
                 <div class="card-label">AI 搜均分</div>
                 <div class="card-value">{{ data.overview.ai_avg }}</div>
             </div>
+        </div>
+
+        <!-- 网页内评测报告 -->
+        <div class="report" v-if="report">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <div class="meta" style="margin:0">评测样本：{{ report.total }}条query（覆盖{{ report.n_categories }}种业务类型） | 评分：4维度×5分制 | 基准对比：文本搜索</div>
+                <div>
+                    <button class="btn btn-outline" @click="editing = !editing" style="padding:6px 14px;font-size:13px">{{ editing ? '完成编辑' : '✏️ 编辑文字' }}</button>
+                    <button v-if="editing" class="btn btn-primary" @click="saveNotes" :disabled="notesSaving" style="padding:6px 14px;font-size:13px;margin-left:8px">{{ notesSaving ? '保存中...' : '💾 保存' }}</button>
+                </div>
+            </div>
+
+            <h2>一、核心结论</h2>
+            <p class="lead">
+                AI搜索整体{{ report.conclusion.trend }}文本搜索（胜率{{ report.conclusion.win_rate }}% vs {{ report.conclusion.lose_rate }}%）<template v-if="report.conclusion.worst">，<span class="bad">{{ report.conclusion.worst.label }}</span>维度表现不足（均分{{ report.conclusion.worst.mean }}，{{ report.conclusion.worst.low_rate }}%低分率）</template>。
+            </p>
+            <p v-if="report.strong.length"><b>AI搜索强于文本搜：</b>{{ report.strong.map(s => `${s.cat}(胜率${s.win}/${s.vs_n})`).join('、') }}</p>
+            <p v-if="report.weak.length"><b>AI搜索弱于文本搜：</b>{{ report.weak.map(s => `${s.cat}(胜率${s.win}/${s.vs_n})`).join('、') }}</p>
+            <template v-if="editing">
+                <p><b>结论补充：</b></p>
+                <textarea v-model="notes.conclusion" class="note-edit" placeholder="补充说明（每行一段，可留空）"></textarea>
+                <p><b>本周可重点提升：</b></p>
+                <textarea v-model="notes.priorities" class="note-edit" placeholder="例：地图质量 / 相关性召回 / 缺图漏图"></textarea>
+            </template>
+            <template v-else>
+                <p v-if="notes.conclusion" v-for="(l,i) in notes.conclusion.split('\n')" :key="'c'+i">{{ l }}</p>
+                <p><b>本周可重点提升：</b></p>
+                <template v-if="notes.priorities">
+                    <p v-for="(l,i) in notes.priorities.split('\n')" :key="'p'+i">{{ l }}</p>
+                </template>
+                <p v-else class="placeholder">（根据bad case人工总结，点「编辑文字」填写）</p>
+            </template>
+
+            <h2>二、评测数据总览</h2>
+            <h3>2.1 统计数据</h3>
+            <textarea v-if="editing" v-model="notes.stats" class="note-edit" placeholder="点击率QV、游玩平均时长、复玩率等线上业务指标"></textarea>
+            <template v-else>
+                <p v-if="notes.stats" v-for="(l,i) in notes.stats.split('\n')" :key="'s'+i">{{ l }}</p>
+                <p v-else class="placeholder">（点击率QV、游玩平均时长、复玩率等线上业务指标，点「编辑文字」填写）</p>
+            </template>
+
+            <h3>2.2 各维度详细评分</h3>
+            <table>
+                <tr><th class="left">维度</th><th>均分(/5)</th><th>有效样本</th><th>低分率(≤2)</th><th>备注</th></tr>
+                <tr v-for="d in report.dimensions" :key="d.field">
+                    <td class="left">{{ d.label }}</td>
+                    <td>{{ d.mean.toFixed(2) }}</td>
+                    <td>{{ d.count }}</td>
+                    <td>{{ d.low_rate }}%</td>
+                    <td :class="{warn: d.note.includes('改进'), ok: d.note.includes('较好')}">{{ d.note }}</td>
+                </tr>
+            </table>
+            <p><b>总体对比（有效{{ report.overall_vs.total }}条）：</b>AI优={{ report.overall_vs.win }}({{ report.overall_vs.win_rate }}%), 持平={{ report.overall_vs.draw }}({{ report.overall_vs.draw_rate }}%), AI劣={{ report.overall_vs.lose }}({{ report.overall_vs.lose_rate }}%)</p>
+            <p class="placeholder">（2.3 各业务类型维度得分图、2.4 AI vs 文本搜对比图见下方可视化图表，Word报告中会内嵌）</p>
+
+            <h3>2.5 按query特征切分</h3>
+            <table>
+                <tr><th>切分维度</th><th>分组</th><th>AI综合分</th><th>相关性</th><th>排序合理性</th><th>质量门槛</th></tr>
+                <tr v-for="(f, i) in report.features" :key="i">
+                    <td>{{ i === 0 || report.features[i-1].dim !== f.dim ? f.dim : '' }}</td>
+                    <td>{{ f.group }}(n={{ f.n }})</td>
+                    <td>{{ f.ai != null ? f.ai.toFixed(2) : '-' }}</td>
+                    <td>{{ f.relevance != null ? f.relevance.toFixed(2) : '-' }}</td>
+                    <td>{{ f.ranking != null ? f.ranking.toFixed(2) : '-' }}</td>
+                    <td>{{ f.quality != null ? f.quality.toFixed(2) : '-' }}</td>
+                </tr>
+            </table>
+
+            <h3>2.6 分业务类型表现</h3>
+            <table>
+                <tr><th class="left">业务类型</th><th>query数量</th><th>相关性</th><th>排序合理性</th><th>质量门槛</th><th>vs文本搜</th></tr>
+                <tr v-for="c in report.categories" :key="c.cat">
+                    <td class="left">{{ c.cat }}</td>
+                    <td>{{ c.n }}</td>
+                    <td>{{ c.relevance.toFixed(2) }}</td>
+                    <td>{{ c.ranking.toFixed(2) }}</td>
+                    <td>{{ c.quality.toFixed(2) }}</td>
+                    <td>{{ c.vs_n ? `${c.win}胜${c.draw}平${c.lose}负` : '-' }}</td>
+                </tr>
+            </table>
+
+            <h2>四、bad case梳理</h2>
+            <textarea v-if="editing" v-model="notes.badcase" class="note-edit" style="min-height:120px" placeholder="按业务类型分节梳理典型bad case（query/期望结果/实际问题/可能原因）"></textarea>
+            <template v-else>
+                <p v-if="notes.badcase" v-for="(l,i) in notes.badcase.split('\n')" :key="'b'+i">{{ l }}</p>
+                <p v-else class="placeholder">（按业务类型分节梳理典型bad case，点「编辑文字」填写）</p>
+            </template>
         </div>
 
         <!-- Dimensions Chart -->
@@ -201,7 +308,7 @@
 </div>
 
 <script>
-const { createApp, ref, computed, onMounted, nextTick } = Vue;
+const { createApp, ref, computed, onMounted, nextTick, watch } = Vue;
 const DIM_LABELS = { relevance: '相关性', accuracy: '准确性', ranking: '排序合理性', diversity: '多样性', quality_threshold: '质量门槛', copy_recommendation: '文案/推荐语', click_desire: '点击欲望' };
 
 // Harmonious color palette (soft modern)
@@ -218,6 +325,10 @@ const COLORS = {
 createApp({
     setup() {
         const data = ref(null);
+        const report = ref(null);
+        const notes = ref({ conclusion: '', priorities: '', stats: '', badcase: '' });
+        const editing = ref(false);
+        const notesSaving = ref(false);
         const aiText = ref('');
         const aiLoading = ref(false);
         const reportLoading = ref(false);
@@ -241,10 +352,17 @@ createApp({
         const showToast = (msg) => { toast.value = msg; setTimeout(() => toast.value = '', 3000); };
 
         const loadData = async () => {
+            localStorage.setItem('active_test_set', activeTestSet.value);
             const res = await fetch(`/api/analysis?test_set_id=${activeTestSet.value}`);
             data.value = await res.json();
+            try {
+                const rres = await fetch(`/api/report-data?test_set_id=${activeTestSet.value}`);
+                report.value = await rres.json();
+                notes.value = report.value.notes || { conclusion: '', priorities: '', stats: '', badcase: '' };
+            } catch (e) { report.value = null; }
             await nextTick();
             renderCharts();
+            generateText();
         };
 
         const loadTestSets = async () => {
@@ -259,6 +377,9 @@ createApp({
         };
 
         const renderCharts = () => {
+            // Dispose old instances so switching test set re-renders with fresh data
+            Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].dispose(); charts[k] = null; } });
+
             // Dimensions bar chart - gradient bars
             const dims = data.value.dimensions;
             charts.dimChart = echarts.init(dimChart.value);
@@ -387,11 +508,30 @@ createApp({
             aiLoading.value = false;
         };
 
+        const saveNotes = async () => {
+            notesSaving.value = true;
+            try {
+                const res = await fetch(`/api/report-notes?test_set_id=${activeTestSet.value}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(notes.value)
+                });
+                if (res.ok) {
+                    notes.value = await res.json();
+                    editing.value = false;
+                    showToast('报告文字已保存');
+                } else {
+                    showToast('保存失败');
+                }
+            } catch (e) { showToast('请求失败'); }
+            notesSaving.value = false;
+        };
+
         const exportReport = async () => {
             reportLoading.value = true;
             showToast('正在生成 Word 报告...');
             try {
-                const res = await fetch('/api/export/report', { method: 'POST' });
+                const res = await fetch(`/api/export/report?test_set_id=${activeTestSet.value}`, { method: 'POST' });
                 if (res.ok) {
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
@@ -406,13 +546,15 @@ createApp({
             reportLoading.value = false;
         };
 
+        watch(activeTestSet, () => { loadData(); });
+
         onMounted(async () => {
             await loadTestSets();
             await loadData();
             generateText();
         });
 
-        return { data, dimChart, vsChart, catChart, levelChart, freqChart, dimText, vsText, catText, aiText, aiHtml, aiLoading, reportLoading, toast, exportChart, getAiAnalysis, exportReport, testSets, activeTestSet };
+        return { data, report, notes, editing, notesSaving, saveNotes, dimChart, vsChart, catChart, levelChart, freqChart, dimText, vsText, catText, aiText, aiHtml, aiLoading, reportLoading, toast, exportChart, getAiAnalysis, exportReport, testSets, activeTestSet };
     }
 }).mount('#app');
 </script>

@@ -390,6 +390,16 @@
             resize: vertical;
             line-height: 1.4;
         }
+
+        /* Custom text column: fixed width, wrap, auto row height */
+        .wrap-text-cell { width: 200px; min-width: 200px; max-width: 200px; white-space: pre-wrap; word-break: break-word; vertical-align: top; }
+        .wrap-text-cell .cell-editable-area { min-height: 24px; }
+
+        /* Custom image column */
+        .img-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+        .img-upload { cursor: pointer; font-size: 12px; color: #0071e3; padding: 2px 8px; border: 1px solid #d2d2d7; border-radius: 6px; }
+        .img-upload:hover { background: rgba(0,113,227,0.06); }
+        .img-upload.uploading { color: #86868b; cursor: default; }
     </style>
 </head>
 <body>
@@ -397,9 +407,10 @@
     <div class="header">
         <div style="display:flex;align-items:center;gap:24px">
             <h1>搜索评测系统</h1>
-            <nav style="display:flex;gap:4px">
-                <a href="/" style="padding:6px 14px;border-radius:980px;background:#0071e3;color:white;text-decoration:none;font-size:13px;font-weight:500">数据管理</a>
-                <a href="/analysis" style="padding:6px 14px;border-radius:980px;color:#1d1d1f;text-decoration:none;font-size:13px;font-weight:500;border:1px solid #d2d2d7">可视化分析</a>
+            <nav style="display:flex;align-items:center;gap:14px">
+                <a href="/" style="color:#1d1d1f;text-decoration:none;font-size:14px;font-weight:600">数据管理</a>
+                <span style="color:#d2d2d7">|</span>
+                <a href="/analysis" style="color:#86868b;text-decoration:none;font-size:14px;font-weight:500">可视化分析</a>
             </nav>
         </div>
         <div class="header-actions">
@@ -442,18 +453,20 @@
                     <input type="checkbox" v-model="col.visible" @change="saveColumnSettings" />
                     {{ col.label }}
                 </label>
-                <span v-if="col.field.startsWith('custom_')" @click="removeColumn(col.field)" style="margin-left:auto;cursor:pointer;color:#ff3b30;font-size:12px" title="删除此列">✕</span>
+                <span @click="removeColumn(col.field)" style="margin-left:auto;cursor:pointer;color:#ff3b30;font-size:12px" title="删除此列">✕</span>
             </div>
         </div>
         <div style="padding:10px 14px;border-top:1px solid #e8e8ed">
-            <div v-if="!showAddColumn" style="text-align:center">
+            <div v-if="!showAddColumn" style="text-align:center;display:flex;gap:8px;justify-content:center">
                 <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" @click="showAddColumn = true">+ 新增列</button>
+                <button class="btn btn-outline" style="font-size:12px;padding:5px 12px" @click="resetColumns" title="恢复所有默认列">↺ 重置列</button>
             </div>
             <div v-else style="display:flex;gap:6px;align-items:center">
                 <input v-model="newColLabel" placeholder="列名" style="flex:1;padding:5px 8px;border:1px solid #d2d2d7;border-radius:6px;font-size:12px" @keyup.enter="addColumn" />
                 <select v-model="newColType" style="padding:5px;border:1px solid #d2d2d7;border-radius:6px;font-size:12px">
                     <option value="text">文本</option>
                     <option value="number">数字</option>
+                    <option value="image">图片</option>
                 </select>
                 <button class="btn btn-primary" style="font-size:12px;padding:5px 10px" @click="addColumn">添加</button>
                 <button class="btn btn-outline" style="font-size:12px;padding:5px 10px" @click="showAddColumn = false">取消</button>
@@ -538,13 +551,18 @@
                         </td>
                         <!-- AI score (auto-calc) -->
                         <td v-else-if="col.field === 'ai_search_score'"><span class="auto-score">{{ calcAiScore(q) }}</span></td>
+                        <!-- Custom image field -->
+                        <td v-else-if="col.editable === 'image'">
+                            <editable-image :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField" @view="showImage" />
+                        </td>
                         <!-- Editable number fields -->
                         <td v-else-if="col.editable === 'number'">
                             <editable-cell :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField" type="number" />
                         </td>
                         <!-- Editable text fields -->
-                        <td v-else-if="col.editable === 'text'">
-                            <editable-cell :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField" />
+                        <td v-else-if="col.editable === 'text'" :class="{'wrap-text-cell': col.field.startsWith('custom_')}">
+                            <editable-area v-if="col.field.startsWith('custom_')" :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField"></editable-area>
+                            <editable-cell v-else :value="q[col.field]" :field="col.field" :id="q.id" @save="saveField"></editable-cell>
                         </td>
                         <!-- Plain display -->
                         <td v-else>{{ q[col.field] }}</td>
@@ -723,8 +741,47 @@ const EditableCell = {
     watch: { value(newVal) { this.displayValue = newVal ?? ''; } }
 };
 
+const EditableImage = {
+    props: ['value', 'field', 'id'],
+    emits: ['save', 'view'],
+    template: `
+        <div class="img-cell">
+            <img v-if="displayValue" :src="displayValue" class="thumbnail" @click="$emit('view', displayValue)" />
+            <span v-else class="no-screenshot">无图</span>
+            <label class="img-upload" :class="{uploading}">
+                <span>{{ uploading ? '上传中…' : (displayValue ? '换图' : '上传') }}</span>
+                <input type="file" accept="image/*" @change="onFile" style="display:none" />
+            </label>
+        </div>
+    `,
+    setup(props, { emit }) {
+        const displayValue = ref(props.value ?? '');
+        const uploading = ref(false);
+        const onFile = async (e) => {
+            const f = e.target.files[0];
+            if (!f) return;
+            uploading.value = true;
+            try {
+                const fd = new FormData();
+                fd.append('file', f);
+                const resp = await fetch(`/api/upload-field-image?query_id=${props.id}&field=${props.field}`, { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (data.url) {
+                    displayValue.value = data.url;
+                    emit('save', { id: props.id, field: props.field, value: data.url });
+                }
+            } finally {
+                uploading.value = false;
+                e.target.value = '';
+            }
+        };
+        return { displayValue, uploading, onFile };
+    },
+    watch: { value(newVal) { this.displayValue = newVal ?? ''; } }
+};
+
 createApp({
-    components: { EditableCell, EditableArea },
+    components: { EditableCell, EditableArea, EditableImage },
     setup() {
         const queries = ref([]);
         const modalImage = ref(null);
@@ -773,25 +830,34 @@ createApp({
         // Custom columns (loaded from API)
         const customColumns = ref([]);
 
+        // Track intentionally removed columns (per test set) so they don't reappear
+        const removedKey = () => `removed_columns_${activeTestSet.value}`;
+        const getRemoved = () => {
+            try { return new Set(JSON.parse(localStorage.getItem(removedKey()) || '[]')); }
+            catch { return new Set(); }
+        };
+        const saveRemoved = (set) => localStorage.setItem(removedKey(), JSON.stringify([...set]));
+
         // Load saved column settings from localStorage
         const loadColumnSettings = (extraCols = []) => {
             const allDefaults = [...DEFAULT_COLUMNS, ...extraCols];
+            const removed = getRemoved();
             try {
                 const key = `column_settings_${activeTestSet.value}`;
                 const saved = localStorage.getItem(key);
-                if (!saved) return allDefaults;
+                if (!saved) return allDefaults.filter(c => !removed.has(c.field));
                 const savedArr = JSON.parse(saved);
                 const defaultMap = {};
                 allDefaults.forEach(c => { defaultMap[c.field] = c; });
                 const merged = savedArr
-                    .filter(s => defaultMap[s.field])
+                    .filter(s => defaultMap[s.field] && !removed.has(s.field))
                     .map(s => ({ ...defaultMap[s.field], visible: s.visible }));
                 const savedFields = new Set(savedArr.map(s => s.field));
                 allDefaults.forEach(c => {
-                    if (!savedFields.has(c.field)) merged.push(c);
+                    if (!savedFields.has(c.field) && !removed.has(c.field)) merged.push(c);
                 });
                 return merged;
-            } catch { return allDefaults; }
+            } catch { return allDefaults.filter(c => !removed.has(c.field)); }
         };
 
         const columns = ref(loadColumnSettings());
@@ -803,7 +869,7 @@ createApp({
                 customColumns.value = await resp.json();
                 const extraCols = customColumns.value.map(c => ({
                     field: c.field, label: c.label, visible: true,
-                    editable: c.type === 'number' ? 'number' : 'text'
+                    editable: c.type === 'number' ? 'number' : (c.type === 'image' ? 'image' : 'text')
                 }));
                 columns.value = loadColumnSettings(extraCols);
             } catch {}
@@ -824,7 +890,10 @@ createApp({
                 });
                 if (!resp.ok) { const e = await resp.json(); alert(e.detail); return; }
                 const col = await resp.json();
-                columns.value.push({ field: col.field, label: col.label, visible: true, editable: col.type === 'number' ? 'number' : 'text' });
+                // un-remove if this field was previously deleted
+                const removed = getRemoved();
+                if (removed.has(col.field)) { removed.delete(col.field); saveRemoved(removed); }
+                columns.value.push({ field: col.field, label: col.label, visible: true, editable: col.type === 'number' ? 'number' : (col.type === 'image' ? 'image' : 'text') });
                 saveColumnSettings();
                 newColLabel.value = '';
                 showAddColumn.value = false;
@@ -833,10 +902,24 @@ createApp({
         };
 
         const removeColumn = async (field) => {
-            if (!confirm('确定删除此自定义列？')) return;
-            await fetch(`/api/custom-columns/${field}?test_set_id=${activeTestSet.value}`, { method: 'DELETE' });
+            if (!confirm('确定删除此列？（数据保留，可用「重置列」恢复默认列）')) return;
+            // remember removal so it won't reappear on reload
+            const removed = getRemoved();
+            removed.add(field);
+            saveRemoved(removed);
+            // custom columns also drop their definition on the server
+            if (field.startsWith('custom_')) {
+                await fetch(`/api/custom-columns/${field}?test_set_id=${activeTestSet.value}`, { method: 'DELETE' });
+            }
             columns.value = columns.value.filter(c => c.field !== field);
             saveColumnSettings();
+        };
+
+        const resetColumns = () => {
+            if (!confirm('恢复所有默认列？（自定义列不受影响）')) return;
+            localStorage.removeItem(removedKey());
+            localStorage.removeItem(`column_settings_${activeTestSet.value}`);
+            loadCustomColumns();
         };
 
         // Save column settings whenever they change
@@ -1345,7 +1428,7 @@ createApp({
             calcAiScore, saveField, deleteQuery, clearAll, doClear, showClearDialog, skipBackup,
             importExcel, importSkipUnknown, cancelImport, unknownColumns, showUnknownDialog, importProgress, importFromServer,
             exportExcel, exportCsv, showImage, prevImage, nextImage,
-            showAddColumn, newColLabel, newColType, addColumn, removeColumn,
+            showAddColumn, newColLabel, newColType, addColumn, removeColumn, resetColumns,
             testSets, activeTestSet, switchTestSet, createTestSet, renameTestSet, deleteTestSet,
             showTestPanel, testRunning, testBreakpoint, testStatus, testLogs, testLogEl,
             openTestPanel, startTest, stopTest

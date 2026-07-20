@@ -128,6 +128,101 @@ def save_custom_columns(cols, test_set_id=None):
         json.dump(cols, f, ensure_ascii=False, indent=2)
 
 
+REPORT_NOTES_FIELDS = ["conclusion", "priorities", "stats", "badcase"]
+
+
+DEFAULT_BADCASE = """4.1 问题汇总（算法填写可能原因与解决办法）
+体感 / 问题：
+- 首图质量太低 → 排序
+- 总体质量偏低 → 召回、排序
+- 缺图漏图，推不满9张图
+- 内容理解不准
+- query未改写 → 意图理解
+- 推图不准确 → 意图理解、召回
+
+问题一：质量偏低
+1. 后缀语义处理：乐园地图→地图、和朋友一起→多人、新地图→近期热门图
+2. 限定搜索范围：下一期上线分类器，缩小搜索范围至2w带地图信息的热门推荐图（游玩量+点赞比双阈值保障），先在AI搜索场景测试效果
+3. 排序策略优化：6张结果中最多出1-2张少于1万游玩量的图（新图扶持机制，仅1/6~2/6流量测试）
+问题二：内容理解不准确
+1. 增加地图解析字段：优先解析"最大出生点"字段实现人数识别，新增颜色字段；根据AI搜索日志推导缺失标签，制定二次全量打标字段清单
+2. 完善AI知识库：总结热门榜单高频玩法描述词，支持后端增量更新
+问题三：返回结果缺图漏图
+1. 提单增加返回地图请求数量（5张→10张），客户端做兜底填充
+问题四：query纠错和改写
+1. 持续收集改写案例，后续安排LLM模型改写优化（优先级后排）
+
+4.2 场景限定
+1. 适合两个人一起玩的乐园地图（频率43）｜期望：排行榜双人《卷纸双蛋（双人）》《双人骑单车》｜问题：首图质量太低、总体质量偏低（尤其"我的偏好"）｜原因：乐园地图后处理
+2. 适合两个人一起玩的地图（41）｜总体质量良好（对照组）
+3. 适合和朋友一起玩的乐园地图（21）｜期望：多人热门地图｜问题：总体质量偏低（尤其"我的偏好"）｜原因：AI识别
+4. 有趣好玩的乐园地图（26）｜期望：热门排行前几｜问题：首图质量低、总体质量偏低、推不满9张｜原因：限定搜索范围、融合搜场景用小范围地图
+5. 好玩的新地图推荐（5）｜问题：是否可全部推近期热门地图
+6. 色彩丰富风景美丽适合休闲玩的跑酷图（1）｜问题：召回"近期热门"相关性较低
+
+4.2 场景限定-观赏（1、质量不高：文本理解需加强 2、缺图漏图）
+1. 有氛围感、花海颜色很暖的地图（4）｜期望：《十里桃花（运镜）》《夕岚花镜》｜问题：相关性不高｜原因：文本理解、召回、打标（人数/颜色）
+2. 全自动、手都不用动的音乐图（51）｜期望：音乐《打火机》《一点点》、RUDE/Whiplash全自动观赏｜问题：推不满9张、相关性不高｜原因：打标
+3. 想要和"四片叶子"一样好看的观赏图（1）｜期望：《云野西瓜》《云野荔枝》《铃兰花序》｜问题：总体质量偏低、缺热门观赏图｜原因：文本理解
+
+4.3 场景限定-难度（总体质量不高）
+1. 很难的地图（19）｜问题：首图质量低、"近期热门"质量低、总体质量偏低｜原因：游玩量/点赞比控制，9张里可有1-2张偏低（7天增量）
+2. 有点难的地图（6）｜问题：总体质量偏低
+3. 轻松有趣的竞速地图（1）｜问题：相关性不足、总体质量偏低
+
+4.4 场景限定-恐怖（缺图漏图很严重）
+1. 来一个恐怖地图（4）｜问题：缺图漏图严重｜原因：服务端请求数量增加（提单）
+2. 让人害怕的恐怖主题地图（107）｜问题：首图质量低、缺图漏图、总体质量偏低
+3. 超级恐怖且收藏多玩的人也多（1）｜问题：不满足query条件（收藏人多）、缺图漏图
+4. 非常恐怖的地图（1）｜问题：相关性不足、总体质量偏低、缺图漏图
+
+4.5 玩法描述（1、推图不准确 2、地图质量不高 3、改写失败）
+1. 我和我的小仓鼠（40）｜问题：召回query匹配不准确
+2. 过生日找生日快乐可自己开店的地图（1）｜问题：生日推了恐怖图、总体质量不高｜原因：开店=步行街（官方tag），先依赖内容理解
+3. 美观一关妈妈年龄加一（1）｜问题：改写失败，没推出理想图｜原因：知识库（热门地图高频词"每过一关"）
+4. 想玩拼斗真正的可以拼（1）｜期望：《拼豆实景工坊》｜问题：相关性不高、改写失败
+5. 宝宝乐园摔下来相关（1）｜问题：没推出理想图
+6. 寻找以前玩过的擂台（7）｜期望：推热门图｜问题：缺图漏图
+7. 体验载具的地图（7）｜问题：缺图漏图｜原因：黑产图被UGC限流
+8. 1v2咸鱼/擂台（1）｜问题：缺图漏图｜原因：黑产图，作者被拉黑
+9. 很难的特性图（4）｜问题：推不出正版
+
+4.6 疑问句&商业化（特殊，考虑拓展该部分回复内容）
+1. 可用乐园B换的枪战地图（1）
+2. 很多要充钱才能获得载具的地图（1）｜原因：联网可小规模尝试
+3. 中奖概率倍儿高（抽奖）（1）
+4. 可领笑脸币买皮肤的游戏（1）
+5. 可抽新赛季皮肤的地图（1）
+疑问query可制定专属回复："地图马上出现！~" / "还在跟脑细胞斗争中。。"
+- 怎么才能找到店铺？（16）
+- 可以开了吗？（26）
+（注：各case截图见原POPO文档）"""
+
+
+def load_report_notes(test_set_id=None):
+    """Load per-test-set free-text report notes."""
+    tid = test_set_id or 0
+    path = os.path.join(APP_DIR, f"report_notes_{tid}.json")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        data = {}
+    notes = {k: data.get(k, "") for k in REPORT_NOTES_FIELDS}
+    if not notes["badcase"].strip():
+        notes["badcase"] = DEFAULT_BADCASE
+    return notes
+
+
+def save_report_notes(notes, test_set_id=None):
+    tid = test_set_id or 0
+    path = os.path.join(APP_DIR, f"report_notes_{tid}.json")
+    clean = {k: str(notes.get(k, "") or "") for k in REPORT_NOTES_FIELDS}
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(clean, f, ensure_ascii=False, indent=2)
+    return clean
+
+
 def get_dynamic_header_mapping(test_set_id=None):
     """Return HEADER_TO_FIELD merged with custom columns"""
     mapping = dict(HEADER_TO_FIELD)
@@ -397,6 +492,22 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
     return {"url": url, "query_id": query_id}
 
 
+@app.post("/api/upload-field-image")
+async def upload_field_image(query_id: int, field: str, file: UploadFile = File(...)):
+    import re
+    if not re.match(r'^custom_\w+$', field):
+        raise HTTPException(400, "非法字段")
+
+    filename = f"q{query_id}_{field}_{int(datetime.now().timestamp())}.jpg"
+    filepath = os.path.join(SCREENSHOTS_DIR, filename)
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    url = f"/static/screenshots/{filename}"
+    return {"url": url, "query_id": query_id, "field": field}
+
+
 @app.post("/api/import")
 async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test_set_id: int = 1):
     import re
@@ -478,22 +589,35 @@ async def import_excel(file: UploadFile = File(...), skip_unknown: int = 0, test
     unknown_headers = []
 
     dynamic_mapping = get_dynamic_header_mapping(test_set_id)
+    image_fields = {c["field"] for c in load_custom_columns(test_set_id) if c.get("type") == "image"}
     for col_idx, header in enumerate(header_row):
         if not header:
             continue
         field = dynamic_mapping.get(header)
         if field:
             if field == 'text_screenshot_url':
-                screenshot_cols[col_idx] = 'text'
+                screenshot_cols[col_idx] = 'text_screenshot_url'
             elif field == 'ai_screenshot_url':
-                screenshot_cols[col_idx] = 'ai'
+                screenshot_cols[col_idx] = 'ai_screenshot_url'
+            elif field in image_fields:
+                # custom image column: try embedded-image extraction, also keep plain-URL path
+                screenshot_cols[col_idx] = field
+                col_mapping[col_idx] = field
             else:
                 col_mapping[col_idx] = field
         else:
             matched = False
             for k, v in dynamic_mapping.items():
                 if v and (k.lower() in header.lower() or header.lower() in k.lower()):
-                    col_mapping[col_idx] = v
+                    if v == 'text_screenshot_url':
+                        screenshot_cols[col_idx] = 'text_screenshot_url'
+                    elif v == 'ai_screenshot_url':
+                        screenshot_cols[col_idx] = 'ai_screenshot_url'
+                    elif v in image_fields:
+                        screenshot_cols[col_idx] = v
+                        col_mapping[col_idx] = v
+                    else:
+                        col_mapping[col_idx] = v
                     matched = True
                     break
             if not matched:
@@ -612,7 +736,7 @@ async def _do_import(task_id, tmp_path, test_set_id, col_mapping, screenshot_col
             # Extract DISPIMG images on-demand from ZIP
             if formula_rows and row_num < len(formula_rows):
                 formula_row = formula_rows[row_num]
-                for col_idx, stype in screenshot_cols.items():
+                for col_idx, target_field in screenshot_cols.items():
                     formula_val = formula_row.get(col_idx, '')
                     if 'DISPIMG' in formula_val:
                         m = dispimg_re.search(formula_val)
@@ -624,13 +748,13 @@ async def _do_import(task_id, tmp_path, test_set_id, col_mapping, screenshot_col
                                 img_bytes = zf.read(zip_path)
                                 zf.close()
                                 ext = 'png' if img_bytes[:4] == b'\x89PNG' else 'jpg'
-                                filename = f"q{new_id}_{stype}_{int(datetime.now().timestamp())}.{ext}"
+                                suffix = re.sub(r'[^0-9A-Za-z_]', '', target_field) or 'img'
+                                filename = f"q{new_id}_{suffix}_{int(datetime.now().timestamp())}.{ext}"
                                 filepath = os.path.join(SCREENSHOTS_DIR, filename)
                                 with open(filepath, "wb") as f:
                                     f.write(img_bytes)
                                 url = f"/static/screenshots/{filename}"
-                                col_name = "text_screenshot_url" if stype == "text" else "ai_screenshot_url"
-                                await db.execute(f"UPDATE queries SET {col_name} = ? WHERE id = ?", [url, new_id])
+                                await db.execute(f'UPDATE queries SET "{target_field}" = ? WHERE id = ?', [url, new_id])
 
             row_num += 1
             import_tasks[task_id]["progress"] = row_num
@@ -1139,9 +1263,191 @@ async def ai_text_analysis():
         return {"text": data["choices"][0]["message"]["content"]}
 
 
+SCORE_FIELDS = ['relevance', 'ranking', 'diversity', 'quality_threshold']
+DIM_LABELS = {
+    'relevance': '相关性',
+    'ranking': '排序合理性',
+    'diversity': '多样性',
+    'quality_threshold': '质量门槛（与文本搜索对比）',
+}
+
+
+def build_report_model(rows):
+    """计算文档2格式报告所需的全部结构化数据（供网页展示与docx共用）"""
+    def to_float(v):
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    total = len(rows)
+
+    # AI综合分 = 4维度均值（逐条）
+    for r in rows:
+        vals = [to_float(r.get(f)) for f in SCORE_FIELDS]
+        vals = [v for v in vals if v is not None]
+        r['_ai_avg'] = sum(vals) / len(vals) if vals else None
+
+    # 维度统计
+    dim_stats = {}
+    for f in SCORE_FIELDS:
+        vals = [to_float(r.get(f)) for r in rows]
+        vals = [v for v in vals if v is not None]
+        if vals:
+            dim_stats[f] = {
+                'mean': sum(vals) / len(vals),
+                'count': len(vals),
+                'low_rate': sum(1 for v in vals if v <= 2) / len(vals),
+            }
+
+    def vs_counts(sub):
+        w = sum(1 for r in sub if str(r.get('vs_text_search')).strip() == '1')
+        d = sum(1 for r in sub if str(r.get('vs_text_search')).strip() == '0')
+        l = sum(1 for r in sub if str(r.get('vs_text_search')).strip() == '-1')
+        return w, d, l
+
+    total_win, total_draw, total_lose = vs_counts(rows)
+    total_vs = total_win + total_draw + total_lose
+    win_rate = total_win / total_vs * 100 if total_vs else 0
+    lose_rate = total_lose / total_vs * 100 if total_vs else 0
+
+    from collections import defaultdict
+    cat_groups = defaultdict(list)
+    for r in rows:
+        cat_groups[r.get('business_category') or '未分类'].append(r)
+
+    cat_data = {}
+    for cat, sub in cat_groups.items():
+        w, d, l = vs_counts(sub)
+        scores = {}
+        for f in SCORE_FIELDS:
+            vals = [to_float(x.get(f)) for x in sub]
+            vals = [v for v in vals if v is not None]
+            scores[f] = sum(vals) / len(vals) if vals else 0
+        cat_data[cat] = {'n': len(sub), 'win': w, 'draw': d, 'lose': l,
+                         'vs_n': w + d + l, 'scores': scores}
+    categories = sorted(cat_data.keys(), key=lambda c: -cat_data[c]['n'])
+
+    # 强/弱分类
+    strong = [(c, cat_data[c]) for c in categories
+              if cat_data[c]['vs_n'] >= 3 and cat_data[c]['win'] > cat_data[c]['lose']]
+    weak = [(c, cat_data[c]) for c in categories
+            if cat_data[c]['vs_n'] >= 3 and cat_data[c]['lose'] > cat_data[c]['win']]
+    worst = max(dim_stats.items(), key=lambda kv: kv[1]['low_rate']) if dim_stats else None
+
+    # 特征切分
+    def feat_stats(sub):
+        n = len(sub)
+        ai_vals = [r['_ai_avg'] for r in sub if r['_ai_avg'] is not None]
+        ai = sum(ai_vals) / len(ai_vals) if ai_vals else None
+        out = {'n': n, 'ai': ai}
+        for f in ['relevance', 'ranking', 'quality_threshold']:
+            vs = [to_float(r.get(f)) for r in sub]
+            vs = [v for v in vs if v is not None]
+            out[f] = sum(vs) / len(vs) if vs else None
+        return out
+
+    features = []
+    short_rows = [r for r in rows if r.get('is_short_query') and '短' in str(r['is_short_query'])]
+    long_rows = [r for r in rows if r.get('is_short_query') and '长' in str(r['is_short_query'])]
+    features.append({'dim': '长短', 'group': '短query', **feat_stats(short_rows)})
+    features.append({'dim': '长短', 'group': '长query', **feat_stats(long_rows)})
+    freq_groups = defaultdict(list)
+    for r in rows:
+        if r.get('frequency_level'):
+            freq_groups[str(r['frequency_level'])].append(r)
+    for g in ['高频', '中频', '长尾']:
+        if g in freq_groups:
+            features.append({'dim': '频率', 'group': g, **feat_stats(freq_groups[g])})
+
+    return {
+        'total': total,
+        'n_categories': len(categories),
+        'conclusion': {
+            'trend': '优于' if win_rate >= lose_rate else '弱于',
+            'win_rate': round(win_rate),
+            'lose_rate': round(lose_rate),
+            'worst': ({'label': DIM_LABELS[worst[0]].split('（')[0],
+                       'mean': round(worst[1]['mean'], 2),
+                       'low_rate': round(worst[1]['low_rate'] * 100)} if worst else None),
+        },
+        'strong': [{'cat': c, 'win': d['win'], 'vs_n': d['vs_n']} for c, d in strong[:6]],
+        'weak': [{'cat': c, 'win': d['win'], 'vs_n': d['vs_n']} for c, d in weak[:6]],
+        'overall_vs': {
+            'win': total_win, 'draw': total_draw, 'lose': total_lose, 'total': total_vs,
+            'win_rate': round(win_rate),
+            'draw_rate': round(total_draw / total_vs * 100) if total_vs else 0,
+            'lose_rate': round(lose_rate),
+        },
+        'dimensions': [
+            {'field': f, 'label': DIM_LABELS[f],
+             'mean': round(st['mean'], 2), 'count': st['count'],
+             'low_rate': round(st['low_rate'] * 100),
+             'note': ('⚠️ 重点改进' if st['low_rate'] >= 0.4 else ('✓ 较好' if st['low_rate'] <= 0.15 else ''))}
+            for f, st in sorted(dim_stats.items(), key=lambda kv: kv[1]['mean'])
+        ],
+        'features': [
+            {'dim': ft['dim'], 'group': ft['group'], 'n': ft['n'],
+             'ai': round(ft['ai'], 2) if ft['ai'] is not None else None,
+             'relevance': round(ft['relevance'], 2) if ft['relevance'] is not None else None,
+             'ranking': round(ft['ranking'], 2) if ft['ranking'] is not None else None,
+             'quality': round(ft['quality_threshold'], 2) if ft['quality_threshold'] is not None else None}
+            for ft in features
+        ],
+        'categories': [
+            {'cat': c, 'n': cat_data[c]['n'],
+             'relevance': round(cat_data[c]['scores'].get('relevance', 0), 2),
+             'ranking': round(cat_data[c]['scores'].get('ranking', 0), 2),
+             'quality': round(cat_data[c]['scores'].get('quality_threshold', 0), 2),
+             'win': cat_data[c]['win'], 'draw': cat_data[c]['draw'],
+             'lose': cat_data[c]['lose'], 'vs_n': cat_data[c]['vs_n']}
+            for c in categories
+        ],
+    }
+
+
+async def _load_report_rows(test_set_id):
+    db = await get_db()
+    if test_set_id:
+        cursor = await db.execute("SELECT * FROM queries WHERE test_set_id = ?", [test_set_id])
+    else:
+        cursor = await db.execute("SELECT * FROM queries")
+    rows = [dict(r) for r in await cursor.fetchall()]
+    await db.close()
+    return rows
+
+
+@app.get("/api/report-data")
+async def report_data(test_set_id: int = QueryParam(default=None)):
+    """返回结构化报告数据，供网页直接展示"""
+    rows = await _load_report_rows(test_set_id)
+    model = build_report_model(rows)
+    model['notes'] = load_report_notes(test_set_id)
+    return model
+
+
+class ReportNotes(BaseModel):
+    conclusion: str = ""
+    priorities: str = ""
+    stats: str = ""
+    badcase: str = ""
+
+
+@app.get("/api/report-notes")
+async def get_report_notes(test_set_id: int = QueryParam(default=None)):
+    return load_report_notes(test_set_id)
+
+
+@app.post("/api/report-notes")
+async def post_report_notes(notes: ReportNotes, test_set_id: int = QueryParam(default=None)):
+    return save_report_notes(notes.dict(), test_set_id)
+
+
 @app.post("/api/export/report")
-async def export_report():
-    """Generate Word report with charts and analysis"""
+async def export_report(test_set_id: int = QueryParam(default=None)):
+    """生成文档2格式的Word评测报告（图表+特征切分+bad case框架）"""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -1151,98 +1457,249 @@ async def export_report():
 
     try:
         from docx import Document
-        from docx.shared import Pt, Inches, Cm
+        from docx.shared import Pt, Inches
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.oxml.ns import qn
     except ImportError:
         raise HTTPException(500, "python-docx not installed")
 
-    analysis = await get_analysis()
+    rows = await _load_report_rows(test_set_id)
+    model = build_report_model(rows)
+    notes = load_report_notes(test_set_id)
+    total = model['total']
+    categories = model['categories']
+    total_vs = model['overall_vs']['total']
+
+    # cat_data 便于绘图
+    cat_data = {c['cat']: c for c in categories}
+    cat_names = [c['cat'] for c in categories]
+
+    # --- Chart 1: 各业务类型关键维度得分 ---
+    top_cats = [c for c in cat_names if cat_data[c]['n'] >= 5][:6]
+    plot_dims = [('relevance', '相关性'), ('ranking', '排序合理性'), ('quality', '质量门槛')]
+    colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666']
+
+    chart1_buf = None
+    if top_cats:
+        fig, ax = plt.subplots(figsize=(10, 5))
+        x = np.arange(len(top_cats))
+        width = 0.8 / len(plot_dims)
+        for idx, (key, label) in enumerate(plot_dims):
+            vals = [cat_data[c].get(key, 0) for c in top_cats]
+            bars = ax.bar(x + idx * width - (len(plot_dims) - 1) * width / 2, vals, width,
+                          label=label, color=colors[idx % len(colors)])
+            for bar in bars:
+                h = bar.get_height()
+                if h > 0:
+                    ax.annotate(f'{h:.1f}', xy=(bar.get_x() + bar.get_width() / 2, h),
+                                xytext=(0, 3), textcoords="offset points",
+                                ha='center', va='bottom', fontsize=8)
+        ax.set_ylabel('得分 (满分5分)')
+        ax.set_title('各业务类型关键维度得分', fontsize=14, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'{c}\n(n={cat_data[c]["n"]})' for c in top_cats])
+        ax.set_ylim(0, 5.5)
+        ax.axhline(y=3, color='red', linestyle='--', linewidth=0.8, alpha=0.5, label='及格线(3分)')
+        ax.legend(loc='upper right')
+        plt.tight_layout()
+        chart1_buf = BytesIO()
+        plt.savefig(chart1_buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        chart1_buf.seek(0)
+
+    # --- Chart 2: vs文本搜 净胜率（横向堆叠） ---
+    plot_cats = [c for c in cat_names if cat_data[c]['vs_n'] >= 3][:8]
+    plot_cats.reverse()
+    chart2_buf = None
+    if plot_cats:
+        wins = [cat_data[c]['win'] for c in plot_cats]
+        draws = [cat_data[c]['draw'] for c in plot_cats]
+        loses = [cat_data[c]['lose'] for c in plot_cats]
+        fig2, ax2 = plt.subplots(figsize=(8, 4))
+        y = np.arange(len(plot_cats))
+        bh = 0.6
+        ax2.barh(y, wins, bh, label='AI优', color='#91cc75')
+        ax2.barh(y, draws, bh, left=wins, label='持平', color='#fac858')
+        ax2.barh(y, loses, bh, left=[w + d for w, d in zip(wins, draws)], label='AI劣', color='#ee6666')
+        ax2.set_yticks(y)
+        ax2.set_yticklabels(plot_cats)
+        ax2.set_xlabel('query数量')
+        ax2.set_title('AI搜索 vs 文本搜索 对比结果', fontsize=13, fontweight='bold')
+        ax2.legend(loc='lower right')
+        for i in range(len(plot_cats)):
+            t = wins[i] + draws[i] + loses[i]
+            if t > 0:
+                net = (wins[i] - loses[i]) / t * 100
+                if net > 0:
+                    label, color = f'+{net:.0f}%', '#2e7d32'
+                elif net < 0:
+                    label, color = f'{net:.0f}%', '#c62828'
+                else:
+                    label, color = '±0%', '#666666'
+                ax2.text(t + 0.3, i, label, va='center', fontsize=9, color=color, fontweight='bold')
+        plt.tight_layout()
+        chart2_buf = BytesIO()
+        plt.savefig(chart2_buf, format='png', dpi=150, bbox_inches='tight')
+        plt.close()
+        chart2_buf.seek(0)
+
+    # ========================================================
+    # WORD
+    # ========================================================
     doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = '微软雅黑'
+    style.font.size = Pt(10.5)
+    style.element.rPr.rFonts.set(qn('w:eastAsia'), '微软雅黑')
 
-    # Title
-    title = doc.add_heading('AI 搜索评测分析报告', 0)
+    title = doc.add_heading('AI搜索评测报告', level=0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f'生成时间: {datetime.now().strftime("%Y-%m-%d %H:%M")}', style='Normal').alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_page_break()
+    doc.add_paragraph(
+        f'评测样本：{total}条query（覆盖{model["n_categories"]}种业务类型） | '
+        f'评分：4维度×5分制 | 基准对比：文本搜索'
+    )
 
-    # 1. Overview
-    doc.add_heading('1. 总体概览', level=1)
-    ov = analysis['overview']
-    doc.add_paragraph(f"总 Query 数: {ov['total']}")
-    doc.add_paragraph(f"已评分数: {ov['scored']}")
-    doc.add_paragraph(f"AI 搜索综合均分: {ov['ai_avg']}")
-    doc.add_paragraph(f"文本搜索综合均分: {ov['text_avg']}")
+    # === 一、核心结论 ===
+    doc.add_heading('一、核心结论', level=1)
+    concl_m = model['conclusion']
+    ovs = model['overall_vs']
+    p = doc.add_paragraph()
+    concl = f'AI搜索整体{concl_m["trend"]}文本搜索（胜率{concl_m["win_rate"]}% vs {concl_m["lose_rate"]}%）'
+    if concl_m['worst']:
+        w = concl_m['worst']
+        concl += f'，{w["label"]}维度表现不足（均分{w["mean"]}，{w["low_rate"]}%低分率）。'
+    else:
+        concl += '。'
+    p.add_run(concl).bold = True
 
-    # 2. Dimensions chart
-    doc.add_heading('2. 各维度得分分析', level=1)
-    dims = analysis['dimensions']
-    dim_labels = {'relevance': '相关性', 'accuracy': '准确性', 'ranking': '排序合理性', 'diversity': '多样性', 'quality_threshold': '质量门槛', 'copy_recommendation': '文案/推荐语', 'click_desire': '点击欲望'}
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.add_run('按query业务分类：').bold = True
+    if model['strong']:
+        doc.add_paragraph('AI搜索强于文本搜：' + '、'.join(f'{s["cat"]}(胜率{s["win"]}/{s["vs_n"]})' for s in model['strong'][:4]))
+    if model['weak']:
+        doc.add_paragraph('AI搜索弱于文本搜：' + '、'.join(f'{s["cat"]}(胜率{s["win"]}/{s["vs_n"]})' for s in model['weak'][:4]))
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    names = [dim_labels.get(d['name'], d['name']) for d in dims]
-    values = [d['mean'] for d in dims]
-    bars = ax.bar(names, values, color='#0071e3')
-    ax.set_ylim(0, 5)
-    ax.set_ylabel('得分')
-    ax.set_title('各评分维度均值')
-    for bar, v in zip(bars, values):
-        ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1, f'{v:.2f}', ha='center', fontsize=9)
-    plt.tight_layout()
-    img_buf = BytesIO()
-    plt.savefig(img_buf, format='png', dpi=150)
-    plt.close()
-    img_buf.seek(0)
-    doc.add_picture(img_buf, width=Inches(6))
+    if notes.get('conclusion', '').strip():
+        for line in notes['conclusion'].strip().split('\n'):
+            doc.add_paragraph(line)
 
-    sorted_dims = sorted(dims, key=lambda d: d['mean'], reverse=True)
-    doc.add_paragraph(f"表现最好: {dim_labels.get(sorted_dims[0]['name'])}（{sorted_dims[0]['mean']}分）")
-    doc.add_paragraph(f"表现最弱: {dim_labels.get(sorted_dims[-1]['name'])}（{sorted_dims[-1]['mean']}分）")
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.add_run('本周可重点提升：').bold = True
+    if notes.get('priorities', '').strip():
+        for line in notes['priorities'].strip().split('\n'):
+            doc.add_paragraph(line)
+    else:
+        doc.add_paragraph('（此处根据bad case人工总结，例：地图质量 / 相关性召回 / 缺图漏图）')
 
-    # 3. VS comparison
-    doc.add_heading('3. AI 搜索 vs 文本搜索', level=1)
-    vs = analysis['vs_text']
-    total_vs = vs['total'] or 1
+    # === 二、评测数据总览 ===
+    doc.add_heading('二、评测数据总览', level=1)
 
-    fig, ax = plt.subplots(figsize=(6, 4))
-    labels = ['AI更优', '持平', 'AI更差']
-    sizes = [vs['better'], vs['same'], vs['worse']]
-    colors = ['#34c759', '#ffcc00', '#ff3b30']
-    ax.pie(sizes, labels=labels, colors=colors, autopct='%1.0f%%', startangle=90, textprops={'fontsize': 12})
-    ax.set_title('AI搜索 vs 文本搜索对比')
-    img_buf = BytesIO()
-    plt.savefig(img_buf, format='png', dpi=150)
-    plt.close()
-    img_buf.seek(0)
-    doc.add_picture(img_buf, width=Inches(4))
-    doc.add_paragraph(f"AI搜在 {vs['better']/total_vs*100:.0f}% 场景优于文本搜，{vs['worse']/total_vs*100:.0f}% 场景表现更差。")
+    # 2.1 统计数据
+    p = doc.add_paragraph()
+    p.add_run('2.1 统计数据').bold = True
+    if notes.get('stats', '').strip():
+        for line in notes['stats'].strip().split('\n'):
+            doc.add_paragraph(line)
+    else:
+        doc.add_paragraph('（点击率QV、游玩平均时长、复玩率等线上业务指标图表，请手动补充）')
 
-    # 4. By category
-    doc.add_heading('4. 按业务分类分析', level=1)
-    cats = analysis['by_category'][:8]
+    # 2.2 各维度详细评分
+    p = doc.add_paragraph()
+    p.add_run('2.2 各维度详细评分').bold = True
+    table = doc.add_table(rows=1, cols=5)
+    table.style = 'Table Grid'
+    hdr = table.rows[0].cells
+    for i, h in enumerate(['维度', '均分(/5)', '有效样本', '低分率(≤2)', '备注']):
+        hdr[i].text = h
+    for dim in model['dimensions']:
+        row = table.add_row().cells
+        row[0].text = dim['label']
+        row[1].text = f'{dim["mean"]:.2f}'
+        row[2].text = str(dim['count'])
+        row[3].text = f'{dim["low_rate"]}%'
+        row[4].text = dim['note']
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.add_run(f'总体对比（有效{ovs["total"]}条）：').bold = True
+    if ovs['total']:
+        p.add_run(f'AI优={ovs["win"]}({ovs["win_rate"]}%), 持平={ovs["draw"]}({ovs["draw_rate"]}%), AI劣={ovs["lose"]}({ovs["lose_rate"]}%)')
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    x = np.arange(len(cats))
-    w = 0.25
-    ax.bar(x - w, [c['ai_avg'] for c in cats], w, label='AI综合分', color='#0071e3')
-    ax.bar(x, [c['dims']['accuracy'] for c in cats], w, label='准确性', color='#ff9500')
-    ax.bar(x + w, [c['dims']['click_desire'] for c in cats], w, label='点击欲望', color='#af52de')
-    ax.set_xticks(x)
-    ax.set_xticklabels([c['category'] for c in cats], rotation=15)
-    ax.set_ylim(0, 5)
-    ax.legend()
-    ax.set_title('各业务分类关键维度得分')
-    plt.tight_layout()
-    img_buf = BytesIO()
-    plt.savefig(img_buf, format='png', dpi=150)
-    plt.close()
-    img_buf.seek(0)
-    doc.add_picture(img_buf, width=Inches(6))
+    # 2.3 各业务类型关键维度得分（chart1）
+    p = doc.add_paragraph()
+    p.add_run('2.3 各业务类型关键维度得分').bold = True
+    if chart1_buf:
+        doc.add_picture(chart1_buf, width=Inches(6.0))
+    doc.add_paragraph()
 
-    # 5. Conclusion
-    doc.add_heading('5. 结论与建议', level=1)
-    doc.add_paragraph(f"本次评测共覆盖 {ov['total']} 条 query，有效评分 {ov['scored']} 条。")
-    doc.add_paragraph(f"AI搜索整体表现{'优于' if vs['better'] > vs['worse'] else '弱于'}文本搜索（胜率 {vs['better']/total_vs*100:.0f}%）。")
-    doc.add_paragraph(f"重点改进方向：{dim_labels.get(sorted_dims[-1]['name'])}（当前仅 {sorted_dims[-1]['mean']} 分）。")
+    # 2.4 AI搜索 vs 文本搜索对比（chart2）
+    p = doc.add_paragraph()
+    p.add_run('2.4 AI搜索 vs 文本搜索对比').bold = True
+    if chart2_buf:
+        doc.add_picture(chart2_buf, width=Inches(5.5))
+    doc.add_paragraph()
+
+    # 2.5 按query特征切分
+    p = doc.add_paragraph()
+    p.add_run('2.5 按query特征切分').bold = True
+    feat = doc.add_table(rows=1, cols=6)
+    feat.style = 'Table Grid'
+    fh = feat.rows[0].cells
+    for i, h in enumerate(['切分维度', '分组', 'AI综合分', '相关性', '排序合理性', '质量门槛']):
+        fh[i].text = h
+    prev_dim = None
+    for ft in model['features']:
+        row = feat.add_row().cells
+        row[0].text = ft['dim'] if ft['dim'] != prev_dim else ''
+        prev_dim = ft['dim']
+        row[1].text = f'{ft["group"]}(n={ft["n"]})'
+        row[2].text = f'{ft["ai"]:.2f}' if ft['ai'] is not None else '-'
+        row[3].text = f'{ft["relevance"]:.2f}' if ft['relevance'] is not None else '-'
+        row[4].text = f'{ft["ranking"]:.2f}' if ft['ranking'] is not None else '-'
+        row[5].text = f'{ft["quality"]:.2f}' if ft['quality'] is not None else '-'
+    doc.add_paragraph()
+
+    # 2.6 分业务类型表现
+    p = doc.add_paragraph()
+    p.add_run('2.6 分业务类型表现').bold = True
+    ct = doc.add_table(rows=1, cols=6)
+    ct.style = 'Table Grid'
+    ch = ct.rows[0].cells
+    for i, h in enumerate(['业务类型', 'query数量', '相关性', '排序合理性', '质量门槛', 'vs文本搜']):
+        ch[i].text = h
+    for d in categories:
+        row = ct.add_row().cells
+        row[0].text = d['cat']
+        row[1].text = str(d['n'])
+        row[2].text = f'{d["relevance"]:.2f}'
+        row[3].text = f'{d["ranking"]:.2f}'
+        row[4].text = f'{d["quality"]:.2f}'
+        row[5].text = f'{d["win"]}胜{d["draw"]}平{d["lose"]}负' if d['vs_n'] else '-'
+
+    # === 四、bad case梳理 ===
+    doc.add_heading('四、bad case梳理', level=1)
+    if notes.get('badcase', '').strip():
+        for line in notes['badcase'].strip().split('\n'):
+            doc.add_paragraph(line)
+    else:
+        p = doc.add_paragraph()
+        p.add_run('4.1 问题汇总').bold = True
+        bc = doc.add_table(rows=1, cols=4)
+        bc.style = 'Table Grid'
+        bh = bc.rows[0].cells
+        for i, h in enumerate(['体感', '问题', '原因', '解决办法']):
+            bh[i].text = h
+        for _ in range(3):
+            bc.add_row()
+        doc.add_paragraph('（按业务类型分节梳理典型bad case，请手动补充query/期望结果/实际问题/可能原因）')
+
+    # === 附：评测方法 ===
+    doc.add_heading('附：评测方法', level=1)
+    doc.add_paragraph(f'• 样本：真实搜索日志按业务类型、频率分层抽样{total}条')
+    doc.add_paragraph('• 评分：4维度×5分制（相关性、排序合理性、多样性、质量门槛），人工逐条评估')
+    doc.add_paragraph('• 对比：同query同时执行文本搜索和AI搜索，对比打分')
+    doc.add_paragraph('• 参考标准：Google Search Quality Rater Guidelines (Needs Met)')
 
     buf = BytesIO()
     doc.save(buf)
