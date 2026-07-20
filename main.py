@@ -778,6 +778,9 @@ async def _do_import(task_id, tmp_path, test_set_id, col_mapping, screenshot_col
         await manager.broadcast({"type": "data_refresh"})
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"[IMPORT ERROR] {e}", flush=True)
         import_tasks[task_id]["status"] = "error"
         import_tasks[task_id]["error"] = str(e)
     finally:
