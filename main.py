@@ -556,6 +556,16 @@ async def set_test_set_status(set_id: int, body: dict):
     return {"ok": True, "status": status}
 
 
+async def _ensure_unlocked(db, query_id):
+    """测试集处于 locked 时抛 423，禁止任何写入（含直接上传的结果）。"""
+    row0 = await (await db.execute("SELECT test_set_id FROM queries WHERE id = ?", [query_id])).fetchone()
+    if row0 is not None:
+        ts = await (await db.execute("SELECT status FROM test_sets WHERE id = ?", [row0["test_set_id"]])).fetchone()
+        if ts is not None and ts["status"] == "locked":
+            await db.close()
+            raise HTTPException(423, "测试集已锁定，请先「解锁编辑」")
+
+
 @app.put("/api/queries/{query_id}")
 async def update_query(query_id: int, data: QueryUpdate):
     updates = data.model_extra or {}
@@ -564,12 +574,7 @@ async def update_query(query_id: int, data: QueryUpdate):
 
     db = await get_db()
     # 锁定校验：测试集 locked 时禁止编辑
-    row0 = await (await db.execute("SELECT test_set_id FROM queries WHERE id = ?", [query_id])).fetchone()
-    if row0 is not None:
-        ts = await (await db.execute("SELECT status FROM test_sets WHERE id = ?", [row0["test_set_id"]])).fetchone()
-        if ts is not None and ts["status"] == "locked":
-            await db.close()
-            raise HTTPException(423, "测试集已锁定，请先「解锁编辑」")
+    await _ensure_unlocked(db, query_id)
 
     updates["updated_at"] = datetime.now().isoformat()
     set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
@@ -592,6 +597,9 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
     if type not in ("text", "ai"):
         raise HTTPException(400, "type must be 'text' or 'ai'")
 
+    db = await get_db()
+    await _ensure_unlocked(db, query_id)
+
     filename = f"q{query_id}_{type}_{int(datetime.now().timestamp())}.jpg"
     filepath = os.path.join(SCREENSHOTS_DIR, filename)
 
@@ -602,7 +610,6 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
     url = f"/static/screenshots/{filename}"
     col = "text_screenshot_url" if type == "text" else "ai_screenshot_url"
 
-    db = await get_db()
     await db.execute(
         f"UPDATE queries SET {col} = ?, updated_at = ? WHERE id = ?",
         [url, datetime.now().isoformat(), query_id]
@@ -626,6 +633,10 @@ async def upload_field_image(query_id: int, field: str, file: UploadFile = File(
     ALLOWED_IMG_FIELDS = {"expected_screenshot", "text_screenshot_url", "ai_screenshot_url"}
     if not (re.match(r'^custom_\w+$', field) or field in ALLOWED_IMG_FIELDS):
         raise HTTPException(400, "非法字段")
+
+    db = await get_db()
+    await _ensure_unlocked(db, query_id)
+    await db.close()
 
     safe = re.sub(r'[^0-9A-Za-z_]', '', field) or 'img'
     filename = f"q{query_id}_{safe}_{int(datetime.now().timestamp())}.jpg"
