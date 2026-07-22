@@ -4,3 +4,4 @@ start*.bat
 static/screenshots/
 custom_columns_*.json
 report_notes_*.json
+knowledge.json

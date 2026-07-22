@@ -7,12 +7,15 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
             background: #f5f5f7;
             color: #1d1d1f;
             -webkit-font-smoothing: antialiased;
+            overflow: hidden;
         }
+        #app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
 
         /* Header */
         .header {
@@ -30,6 +33,7 @@
         }
         .header h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
         .header-actions { display: flex; gap: 10px; }
+        .header { flex-shrink: 0; }
 
         /* Buttons */
         .btn {
@@ -83,13 +87,15 @@
             color: #86868b;
             background: #fff;
             border-bottom: 1px solid rgba(0,0,0,0.04);
+            flex-shrink: 0;
         }
 
         /* Table container */
         .table-wrapper {
-            margin: 24px 32px;
+            margin: 16px 32px;
             overflow: auto;
-            max-height: calc(100vh - 140px);
+            flex: 1;
+            min-height: 0;
             -webkit-overflow-scrolling: touch;
             border-radius: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.06);
@@ -316,6 +322,7 @@
             border: 2px dashed #d2d2d7; border-radius: 12px;
             text-align: center; display: none; background: white;
             transition: border-color 0.2s;
+            flex-shrink: 0;
         }
         .upload-area:hover { border-color: #0071e3; }
         .upload-area.show { display: block; margin-bottom: 0; }
@@ -408,15 +415,19 @@
         <div style="display:flex;align-items:center;gap:24px">
             <h1>搜索评测系统</h1>
             <nav style="display:flex;align-items:center;gap:14px">
-                <a href="/" style="color:#1d1d1f;text-decoration:none;font-size:14px;font-weight:600">数据管理</a>
+                <a href="/detail" style="color:#86868b;text-decoration:none;font-size:14px;font-weight:500">首页</a>
+                <span style="color:#d2d2d7">|</span>
+                <a href="/annotate" style="color:#86868b;text-decoration:none;font-size:14px;font-weight:500">标注工作台</a>
                 <span style="color:#d2d2d7">|</span>
                 <a href="/analysis" style="color:#86868b;text-decoration:none;font-size:14px;font-weight:500">可视化分析</a>
+                <span style="color:#d2d2d7">|</span>
+                <a href="/" style="color:#1d1d1f;text-decoration:none;font-size:14px;font-weight:600">数据管理</a>
             </nav>
         </div>
         <div class="header-actions">
             <button class="btn" style="background:#5470c6;color:white" @click="openTestPanel">🚀 自动化测试</button>
             <button class="btn btn-outline" @click="showColumnSettings = !showColumnSettings">列设置</button>
-            <button class="btn btn-primary" @click="showImport = !showImport">导入 Excel</button>
+            <button class="btn btn-primary" @click="showImport = !showImport">导入数据</button>
             <button class="btn btn-success" @click="exportExcel">导出 Excel</button>
             <button class="btn btn-outline" @click="exportCsv">导出 CSV</button>
             <button class="btn btn-danger" @click="clearAll">清空数据</button>
@@ -480,8 +491,8 @@
     </div>
 
     <div class="upload-area" :class="{ show: showImport }">
-        <input type="file" accept=".xlsx,.xls" @change="importExcel" :disabled="importProgress.active" />
-        <p style="margin-top:10px;color:#86868b;font-size:13px;">选择 Excel 文件导入（重复 query 自动跳过）</p>
+        <input type="file" accept=".xlsx,.xls,.csv" @change="importExcel" :disabled="importProgress.active" />
+        <p style="margin-top:10px;color:#86868b;font-size:13px;">选择 Excel / CSV 文件导入（重复 query 自动跳过）</p>
         <div v-if="importProgress.active" style="margin-top:12px;width:100%;max-width:400px;">
             <div style="display:flex;justify-content:space-between;font-size:13px;color:#333;margin-bottom:4px;">
                 <span>{{ importProgress.statusText }}</span>
@@ -539,6 +550,10 @@
                         <!-- Search result (textarea) -->
                         <td v-else-if="col.field === 'search_result'" class="search-result-cell">
                             <editable-area :value="q.search_result" field="search_result" :id="q.id" @save="saveField" />
+                        </td>
+                        <!-- Expected result (textarea) -->
+                        <td v-else-if="col.field === 'expected_result'" class="search-result-cell">
+                            <editable-area :value="q.expected_result" field="expected_result" :id="q.id" @save="saveField" />
                         </td>
                         <!-- Screenshots -->
                         <td v-else-if="col.field === 'text_screenshot_url'">
@@ -813,6 +828,8 @@ createApp({
             { field: 'is_short_query', label: 'Query层级', visible: true },
             { field: 'frequency_level', label: '频率层级', visible: true },
             { field: 'original_group', label: '原始分组', visible: true },
+            { field: 'expected_result', label: '期望搜索结果', visible: true, editable: 'text' },
+            { field: 'expected_screenshot', label: '期望结果截图', visible: true, editable: 'image' },
             { field: 'search_result', label: '搜索结果', visible: true },
             { field: 'text_screenshot_url', label: '文本搜截图', visible: true },
             { field: 'ai_screenshot_url', label: 'AI搜截图', visible: true },

@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首页 - 搜索评测系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f7; color: #1d1d1f; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: #fff; border-bottom: 1px solid #e8e8ed; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 24px; }
+        h1 { font-size: 20px; font-weight: 600; }
+        nav { display: flex; align-items: center; gap: 14px; }
+        nav a { text-decoration: none; font-size: 14px; font-weight: 500; color: #86868b; }
+        nav a.active { color: #1d1d1f; font-weight: 600; }
+        nav .sep { color: #d2d2d7; }
+        .header-actions { display: flex; align-items: center; gap: 10px; }
+        select, .search-box { padding: 7px 12px; border-radius: 8px; border: 1px solid #d2d2d7; font-size: 13px; outline: none; }
+        .search-box { width: 280px; }
+        .search-box:focus { border-color: #0071e3; }
+        .search-wrap { display: flex; align-items: center; gap: 6px; }
+        .mini-search { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; padding: 0; border: none; background: none; color: #86868b; cursor: pointer; }
+        .mini-search:hover { color: #1d1d1f; }
+        .mini-search svg { width: 17px; height: 17px; display: block; }
+        .container { max-width: 1240px; margin: 22px auto; padding: 0 20px; }
+        .count { color: #86868b; font-size: 13px; margin-bottom: 14px; }
+
+        .card { background: #fff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 20px; overflow: hidden; display: grid; grid-template-columns: 1.1fr 0.9fr 1.3fr; }
+        .col { padding: 20px; }
+        .col + .col { border-left: 1px solid #f0f0f2; }
+        .col-title { font-size: 12px; font-weight: 600; color: #86868b; letter-spacing: 0.5px; margin-bottom: 12px; text-transform: uppercase; }
+
+        .qid { display: inline-block; font-size: 12px; font-weight: 600; color: #0071e3; background: #eaf3ff; padding: 2px 10px; border-radius: 980px; margin-bottom: 8px; }
+        .qtext { font-size: 18px; font-weight: 600; line-height: 1.4; margin-bottom: 14px; }
+        .meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 13px; }
+        .meta-grid .k { color: #86868b; }
+        .meta-grid .v { color: #1d1d1f; font-weight: 500; }
+        .thumb { width: 100%; max-width: 260px; border-radius: 10px; border: 1px solid #e8e8ed; cursor: zoom-in; margin-top: 12px; display: block; }
+
+        .score-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+        .score-label { width: 84px; font-size: 13px; color: #1d1d1f; flex-shrink: 0; }
+        .score-bar { flex: 1; height: 8px; background: #f0f0f2; border-radius: 6px; overflow: hidden; }
+        .score-fill { height: 100%; border-radius: 6px; }
+        .score-val { width: 34px; text-align: right; font-size: 13px; font-weight: 600; }
+        .ai-total { margin-top: 6px; padding-top: 12px; border-top: 1px solid #f0f0f2; display: flex; align-items: center; justify-content: space-between; }
+        .ai-total .big { font-size: 26px; font-weight: 700; color: #0071e3; }
+        .vs-badge { font-size: 12px; font-weight: 600; padding: 3px 12px; border-radius: 980px; }
+        .vs-win { background: #e3f7e8; color: #1d8a3f; }
+        .vs-draw { background: #fff4d6; color: #9a7a1a; }
+        .vs-lose { background: #ffe3e3; color: #d1352b; }
+        .vs-na { background: #f0f0f2; color: #86868b; }
+
+        .block { margin-bottom: 16px; }
+        .block-h { font-size: 13px; font-weight: 600; margin-bottom: 6px; color: #1d1d1f; }
+        .block-text { font-size: 13px; line-height: 1.6; color: #444; white-space: pre-wrap; word-break: break-word; }
+        .empty { color: #b0b0b5; font-style: italic; font-size: 13px; }
+
+        .img-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; }
+        .img-modal img { max-width: 92vw; max-height: 92vh; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+        .img-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #fff; background: rgba(255,255,255,0.12); border-radius: 50%; cursor: pointer; user-select: none; }
+        .img-nav:hover { background: rgba(255,255,255,0.28); }
+        .img-nav.prev { left: 32px; } .img-nav.next { right: 32px; }
+        .img-count { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; background: rgba(0,0,0,0.5); padding: 4px 14px; border-radius: 980px; }
+        .no-data { text-align: center; color: #86868b; padding: 60px 0; }
+
+        /* 首页 概览 + 导航 */
+        .hero { background: linear-gradient(120deg, #0071e3, #4a9eff); color: #fff; border-radius: 18px; padding: 28px 32px; margin-bottom: 20px; box-shadow: 0 4px 18px rgba(0,113,227,0.25); }
+        .hero-title { font-size: 26px; font-weight: 700; }
+        .hero-sub { font-size: 14px; opacity: 0.9; margin-top: 6px; }
+        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+        .stat-card { background: #fff; border-radius: 14px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .stat-num { font-size: 28px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
+        .stat-num.blue { color: #0071e3; }
+        .stat-num.green { color: #1d8a3f; }
+        .stat-label { font-size: 12px; color: #86868b; margin-top: 6px; }
+        .mini-bar { height: 6px; background: #f0f0f2; border-radius: 6px; margin-top: 8px; overflow: hidden; }
+        .mini-bar > div { height: 100%; background: #34c759; border-radius: 6px; }
+        .nav-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+        .nav-card { display: flex; align-items: center; gap: 16px; background: #fff; border-radius: 14px; padding: 20px 22px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-decoration: none; color: #1d1d1f; transition: transform 0.12s, box-shadow 0.12s; }
+        .nav-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,0.1); }
+        .nav-ico { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+        .nav-ico.c1 { background: #eaf3ff; } .nav-ico.c2 { background: #eafbf0; } .nav-ico.c3 { background: #fff3e0; }
+        .nav-name { font-size: 16px; font-weight: 600; }
+        .nav-desc { font-size: 12px; color: #86868b; margin-top: 3px; }
+        .section-title { font-size: 17px; font-weight: 600; margin: 4px 0 14px; display: flex; align-items: baseline; gap: 12px; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <div class="header-left">
+            <h1>搜索评测系统</h1>
+            <nav>
+                <a href="/detail" class="active">首页</a>
+                <span class="sep">|</span>
+                <a href="/annotate">标注工作台</a>
+                <span class="sep">|</span>
+                <a href="/analysis">可视化分析</a>
+                <span class="sep">|</span>
+                <a href="/">数据管理</a>
+            </nav>
+        </div>
+        <div class="header-actions">
+            <select v-model="activeTestSet">
+                <option v-for="ts in testSets" :key="ts.id" :value="ts.id">{{ ts.name }}</option>
+            </select>
+            <input class="search-box" v-model="search" @keyup.enter="doSearch" placeholder="搜索 query 编号 或 内容…" />
+            <button class="mini-search" @click="doSearch" title="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-title">搜索评测标注系统</div>
+            <div class="hero-sub">当前测试集：{{ currentSetName }} · 共 {{ testSets.length }} 个测试集</div>
+        </div>
+
+        <div class="stat-grid">
+            <div class="stat-card">
+                <div class="stat-num">{{ stats.total }}</div>
+                <div class="stat-label">Query 总数</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num blue">{{ stats.labeled }}</div>
+                <div class="stat-label">已标注</div>
+                <div class="mini-bar"><div :style="{ width: stats.progress + '%' }"></div></div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num">{{ stats.progress }}%</div>
+                <div class="stat-label">标注进度</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num blue">{{ stats.avgAi }}</div>
+                <div class="stat-label">AI 综合分（均）</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-num green">{{ stats.winRate }}%</div>
+                <div class="stat-label">AI 优于文本搜（{{ stats.vsCmp }} 条已对比）</div>
+            </div>
+        </div>
+
+        <div class="nav-grid">
+            <a href="/annotate" class="nav-card">
+                <div class="nav-ico c3">✍️</div>
+                <div><div class="nav-name">标注工作台</div><div class="nav-desc">打分、对比、自动化标注</div></div>
+            </a>
+            <a href="/analysis" class="nav-card">
+                <div class="nav-ico c2">📊</div>
+                <div><div class="nav-name">可视化分析</div><div class="nav-desc">评分图表与答辩报告</div></div>
+            </a>
+            <a href="/" class="nav-card">
+                <div class="nav-ico c1">📋</div>
+                <div><div class="nav-name">数据管理</div><div class="nav-desc">导入 Excel、编辑测试集与列</div></div>
+            </a>
+        </div>
+
+        <div class="section-title">Query 详情 <span class="count" style="margin:0">共 {{ filtered.length }} / {{ queries.length }} 条</span></div>
+
+        <div v-if="!filtered.length" class="no-data">无匹配数据</div>
+
+        <div v-for="q in filtered" :key="q.id" class="card">
+            <!-- 左：query 信息 -->
+            <div class="col">
+                <div class="col-title">Query 信息</div>
+                <span class="qid">#{{ q.id }}</span>
+                <div class="qtext">{{ q.query }}</div>
+                <div class="meta-grid">
+                    <span class="k">长度</span><span class="v">{{ q.query_length ?? '-' }}</span>
+                    <span class="k">搜索次数</span><span class="v">{{ q.search_count ?? '-' }}</span>
+                    <span class="k">业务类别</span><span class="v">{{ q.business_category || '-' }}</span>
+                    <span class="k">Query层级</span><span class="v">{{ q.is_short_query || '-' }}</span>
+                    <span class="k">频率层级</span><span class="v">{{ q.frequency_level || '-' }}</span>
+                </div>
+                <img v-if="q.ai_screenshot_url" :src="q.ai_screenshot_url" class="thumb" @click="zoom(q.ai_screenshot_url)" />
+            </div>
+
+            <!-- 中：评分 -->
+            <div class="col">
+                <div class="col-title">评分</div>
+                <div v-for="s in scoreDims" :key="s.field" class="score-row">
+                    <span class="score-label">{{ s.label }}</span>
+                    <div class="score-bar"><div class="score-fill" :style="{width: pct(q[s.field]), background: barColor(q[s.field])}"></div></div>
+                    <span class="score-val">{{ fmt(q[s.field]) }}</span>
+                </div>
+                <div class="ai-total">
+                    <div>
+                        <div class="col-title" style="margin:0">AI综合分</div>
+                        <div class="big">{{ fmt(q.ai_search_score) }}</div>
+                    </div>
+                    <span class="vs-badge" :class="vsClass(q.vs_text_search)">{{ vsText(q.vs_text_search) }}</span>
+                </div>
+            </div>
+
+            <!-- 右：理想地图 + 搜索效果 -->
+            <div class="col">
+                <div class="col-title">理想地图 / 搜索效果</div>
+                <div class="block">
+                    <div class="block-h">🎯 理想地图（期望）</div>
+                    <div v-if="q.expected_result" class="block-text">{{ q.expected_result }}</div>
+                    <div v-else-if="!q.expected_screenshot" class="empty">未填写</div>
+                    <img v-if="q.expected_screenshot" :src="q.expected_screenshot" class="thumb" @click="zoom(q.expected_screenshot)" />
+                </div>
+                <div class="block">
+                    <div class="block-h">🔍 搜索效果（实际）</div>
+                    <div v-if="q.search_result" class="block-text">{{ q.search_result }}</div>
+                    <div v-else-if="!q.text_screenshot_url" class="empty">未填写</div>
+                    <img v-if="q.text_screenshot_url" :src="q.text_screenshot_url" class="thumb" @click="zoom(q.text_screenshot_url)" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div v-if="modalImage" class="img-modal" @click="modalImage = null">
+        <div v-if="modalImages.length > 1" class="img-nav prev" @click.stop="nav(-1)">‹</div>
+        <img :src="modalImage" @click.stop />
+        <div v-if="modalImages.length > 1" class="img-nav next" @click.stop="nav(1)">›</div>
+        <div v-if="modalImages.length > 1" class="img-count">{{ modalIdx + 1 }} / {{ modalImages.length }}</div>
+    </div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, watch } = Vue;
+
+createApp({
+    setup() {
+        const testSets = ref([]);
+        const activeTestSet = ref(1);
+        const queries = ref([]);
+        const search = ref('');
+        const modalImage = ref(null);
+        const modalImages = ref([]);
+        const modalIdx = ref(0);
+
+        const scoreDims = [
+            { field: 'relevance', label: '相关性' },
+            { field: 'accuracy', label: '准确性' },
+            { field: 'ranking', label: '排序合理性' },
+            { field: 'diversity', label: '多样性' },
+            { field: 'quality_threshold', label: '质量门槛' },
+            { field: 'click_desire', label: '点击欲望' },
+        ];
+
+        const fmt = (v) => (v == null || v === '') ? '-' : Number(v).toFixed(2).replace(/\.00$/, '');
+        const pct = (v) => (v == null || v === '') ? '0%' : Math.max(0, Math.min(100, Number(v) / 5 * 100)) + '%';
+        const barColor = (v) => {
+            const n = Number(v);
+            if (!n) return '#e0e0e5';
+            if (n >= 4) return '#34c759';
+            if (n >= 3) return '#5470c6';
+            if (n >= 2) return '#fac858';
+            return '#ee6666';
+        };
+        const vsText = (v) => ({ '1': 'AI 优于文本搜', '0': '与文本搜持平', '-1': 'AI 弱于文本搜' }[String(v)] || '未对比');
+        const vsClass = (v) => ({ '1': 'vs-win', '0': 'vs-draw', '-1': 'vs-lose' }[String(v)] || 'vs-na');
+
+        const filtered = computed(() => {
+            const t = search.value.trim().toLowerCase();
+            if (!t) return queries.value;
+            return queries.value.filter(q =>
+                String(q.id).includes(t) || (q.query || '').toLowerCase().includes(t)
+            );
+        });
+
+        const currentSetName = computed(() => {
+            const ts = testSets.value.find(t => t.id === activeTestSet.value);
+            return ts ? ts.name : '-';
+        });
+
+        const stats = computed(() => {
+            const qs = queries.value;
+            const total = qs.length;
+            const labeled = qs.filter(q => q.relevance != null && q.relevance !== '').length;
+            const scored = qs.filter(q => q.ai_search_score != null && q.ai_search_score !== '');
+            const avgAi = scored.length ? scored.reduce((a, q) => a + Number(q.ai_search_score), 0) / scored.length : null;
+            const vsCmp = qs.filter(q => q.vs_text_search != null && q.vs_text_search !== '').length;
+            const vsWin = qs.filter(q => String(q.vs_text_search) === '1').length;
+            return {
+                total, labeled,
+                progress: total ? Math.round(labeled / total * 100) : 0,
+                avgAi: avgAi != null ? avgAi.toFixed(2) : '-',
+                vsCmp,
+                winRate: vsCmp ? Math.round(vsWin / vsCmp * 100) : 0,
+            };
+        });
+
+        const loadTestSets = async () => {
+            const res = await fetch('/api/test-sets');
+            testSets.value = await res.json();
+            const saved = localStorage.getItem('active_test_set');
+            if (saved && testSets.value.find(t => t.id === parseInt(saved))) activeTestSet.value = parseInt(saved);
+            else if (testSets.value.length) activeTestSet.value = testSets.value[0].id;
+        };
+        const loadQueries = async () => {
+            localStorage.setItem('active_test_set', activeTestSet.value);
+            const res = await fetch(`/api/queries?test_set_id=${activeTestSet.value}`);
+            queries.value = await res.json();
+        };
+
+        const zoom = (url) => {
+            modalImages.value = [];
+            filtered.value.forEach(q => {
+                [q.ai_screenshot_url, q.expected_screenshot, q.text_screenshot_url].forEach(u => { if (u) modalImages.value.push(u); });
+            });
+            modalIdx.value = Math.max(0, modalImages.value.indexOf(url));
+            modalImage.value = url;
+        };
+        const nav = (d) => {
+            if (modalImages.value.length < 2) return;
+            modalIdx.value = (modalIdx.value + d + modalImages.value.length) % modalImages.value.length;
+            modalImage.value = modalImages.value[modalIdx.value];
+        };
+        const doSearch = () => { search.value = search.value.trim(); };
+
+        watch(activeTestSet, loadQueries);
+        onMounted(async () => {
+            await loadTestSets();
+            await loadQueries();
+            window.addEventListener('keydown', (e) => {
+                if (!modalImage.value) return;
+                if (e.key === 'ArrowLeft') nav(-1);
+                else if (e.key === 'ArrowRight') nav(1);
+                else if (e.key === 'Escape') modalImage.value = null;
+            });
+        });
+
+        return { testSets, activeTestSet, queries, search, filtered, scoreDims, fmt, pct, barColor, vsText, vsClass, zoom, nav, doSearch, modalImage, modalImages, modalIdx, stats, currentSetName };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>

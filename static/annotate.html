@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>标注工作台 - 搜索评测系统</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f7; color: #1d1d1f; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 24px; background: #fff; border-bottom: 1px solid #e8e8ed; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 22px; }
+        h1 { font-size: 19px; font-weight: 600; }
+        nav { display: flex; align-items: center; gap: 14px; }
+        nav a { text-decoration: none; font-size: 14px; font-weight: 500; color: #86868b; }
+        nav a.active { color: #1d1d1f; font-weight: 600; }
+        nav .sep { color: #d2d2d7; }
+        .header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        select, .search-box, .btn { padding: 7px 12px; border-radius: 8px; border: 1px solid #d2d2d7; font-size: 13px; outline: none; background: #fff; cursor: pointer; }
+        .search-box { width: 200px; cursor: text; }
+        .search-box:focus { border-color: #0071e3; }
+        .mini-search { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; padding: 0; border: none; background: none; color: #86868b; cursor: pointer; }
+        .mini-search:hover { color: #1d1d1f; }
+        .mini-search svg { width: 17px; height: 17px; display: block; }
+        .cap-btn { padding: 8px 16px; border: none; border-radius: 980px; background: #0071e3; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+        .cap-btn:hover { background: #0077ed; }
+        .cap-btn.running { background: #34c759; }
+        .cap-dot { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: capBlink 1s infinite; }
+        @keyframes capBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        .cap-panel { position: fixed; right: 20px; bottom: 20px; width: 340px; background: #fff; border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.18); z-index: 3000; overflow: hidden; }
+        .cap-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: #1d1d1f; color: #fff; font-size: 14px; font-weight: 600; }
+        .cap-x { cursor: pointer; opacity: 0.7; } .cap-x:hover { opacity: 1; }
+        .cap-body { padding: 14px 16px; }
+        .cap-line { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+        .cap-line.running { color: #1d8a3f; } .cap-line.error { color: #d1352b; } .cap-line.done { color: #0071e3; }
+        .cap-log { background: #1d1d1f; color: #d1e7c9; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; line-height: 1.5; padding: 10px; border-radius: 8px; max-height: 150px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        .cap-tip { font-size: 11.5px; color: #86868b; margin: 10px 0; line-height: 1.5; }
+        .cap-actions { display: flex; justify-content: flex-end; }
+        .cap-start { padding: 7px 16px; border: none; border-radius: 8px; background: #0071e3; color: #fff; font-size: 13px; cursor: pointer; }
+        .cap-stop { padding: 7px 16px; border: none; border-radius: 8px; background: #ff3b30; color: #fff; font-size: 13px; cursor: pointer; }
+        .cap-pause { padding: 8px 14px; border: none; border-radius: 980px; background: #ff9500; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .cap-finish { padding: 8px 14px; border: none; border-radius: 980px; background: #1d1d1f; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .cap-unlock { padding: 8px 14px; border: none; border-radius: 980px; background: #ff9500; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+        .lock-badge { font-size: 13px; font-weight: 600; color: #d1352b; background: #ffe3e3; padding: 5px 12px; border-radius: 980px; white-space: nowrap; }
+        .lock-toast { position: fixed; top: 72px; left: 50%; transform: translateX(-50%); background: #1d1d1f; color: #fff; padding: 12px 22px; border-radius: 980px; font-size: 14px; font-weight: 600; z-index: 4000; box-shadow: 0 4px 16px rgba(0,0,0,0.25); }
+        .locked-ro .chip, .locked-ro .vs-btn, .locked-ro .remark, .locked-ro .upload-btn { pointer-events: none; opacity: 0.75; }
+        .toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #1d1d1f; cursor: pointer; user-select: none; }
+
+        .progress-wrap { background: #fff; border-bottom: 1px solid #e8e8ed; padding: 8px 24px; display: flex; align-items: center; gap: 14px; position: sticky; top: 53px; z-index: 99; }
+        .progress-bar { flex: 1; height: 8px; background: #f0f0f2; border-radius: 6px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #34c759, #30b350); border-radius: 6px; transition: width 0.3s; }
+        .progress-txt { font-size: 13px; color: #86868b; white-space: nowrap; }
+        .nav-btns { display: flex; align-items: center; gap: 8px; }
+        .nav-btns button { padding: 6px 14px; font-weight: 500; }
+        .idx-txt { font-size: 13px; color: #1d1d1f; font-weight: 600; min-width: 90px; text-align: center; }
+
+        .board { max-width: none; margin: 12px 16px 0; padding: 0; }
+        .card { background: #fff; border-radius: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); display: grid; grid-template-columns: 1.05fr 0.95fr 1fr; overflow: hidden; height: calc(100vh - 162px); }
+        .col { padding: 20px 24px; overflow-y: auto; }
+        .col + .col { border-left: 1px solid #f0f0f2; }
+        .col-title { font-size: 13px; font-weight: 600; color: #86868b; letter-spacing: 0.5px; margin-bottom: 12px; text-transform: uppercase; }
+
+        .qid { display: inline-block; font-size: 13px; font-weight: 600; color: #0071e3; background: #eaf3ff; padding: 3px 12px; border-radius: 980px; margin-bottom: 8px; }
+        .qtext { font-size: 23px; font-weight: 600; line-height: 1.35; margin-bottom: 14px; }
+        .meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font-size: 14.5px; margin-bottom: 16px; }
+        .meta-grid .k { color: #86868b; } .meta-grid .v { font-weight: 500; }
+        .gallery { display: flex; flex-wrap: wrap; gap: 10px; }
+        .gallery figure { width: calc(50% - 5px); }
+        .gallery img { width: 100%; border-radius: 10px; border: 1px solid #e8e8ed; cursor: zoom-in; display: block; }
+        .gallery figcaption { font-size: 12px; color: #86868b; margin-top: 4px; text-align: center; }
+        .no-img { color: #b0b0b5; font-style: italic; font-size: 14px; }
+
+        .dim { margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; }
+        .dim.active { border-color: #0071e3; background: #f5faff; }
+        .dim-label { font-size: 16px; font-weight: 500; margin-bottom: 9px; display: flex; justify-content: space-between; }
+        .dim-label .hint { font-size: 12px; color: #86868b; font-weight: 400; }
+        .chips { display: flex; gap: 7px; }
+        .chip { flex: 1; text-align: center; padding: 11px 0; border-radius: 10px; border: 1px solid #d2d2d7; font-size: 18px; font-weight: 600; cursor: pointer; background: #fff; transition: all 0.12s; }
+        .chip:hover { border-color: #0071e3; }
+        .chip.sel { color: #fff; border-color: transparent; }
+        .chip.sel.s1 { background: #ee6666; } .chip.sel.s2 { background: #fac858; }
+        .chip.sel.s3 { background: #5470c6; } .chip.sel.s4 { background: #34c759; } .chip.sel.s5 { background: #1d8a3f; }
+
+        .ai-total { margin-top: 14px; padding-top: 14px; border-top: 1px solid #f0f0f2; display: flex; align-items: center; justify-content: space-between; }
+        .ai-total .big { font-size: 36px; font-weight: 700; color: #0071e3; }
+        .vs-row { display: flex; gap: 8px; margin-top: 6px; }
+        .vs-btn { flex: 1; text-align: center; padding: 11px 0; border-radius: 10px; border: 1px solid #d2d2d7; font-size: 15px; font-weight: 600; cursor: pointer; background: #fff; }
+        .vs-btn.sel-win { background: #e3f7e8; color: #1d8a3f; border-color: transparent; }
+        .vs-btn.sel-draw { background: #fff4d6; color: #9a7a1a; border-color: transparent; }
+        .vs-btn.sel-lose { background: #ffe3e3; color: #d1352b; border-color: transparent; }
+
+        .block { margin-bottom: 14px; }
+        .block-h { font-size: 15px; font-weight: 600; margin-bottom: 7px; }
+        .block-text { font-size: 14.5px; line-height: 1.65; color: #444; white-space: pre-wrap; word-break: break-word; }
+        .empty { color: #b0b0b5; font-style: italic; font-size: 14px; }
+        .remark { width: 100%; min-height: 66px; border: 1px solid #d2d2d7; border-radius: 10px; padding: 10px 12px; font-size: 14.5px; font-family: inherit; line-height: 1.65; resize: vertical; outline: none; }
+        .remark:focus { border-color: #0071e3; }
+        .thumb { width: 100%; border-radius: 10px; border: 1px solid #e8e8ed; cursor: zoom-in; margin-top: 7px; }
+        .upload-btn { display: inline-block; margin-top: 7px; padding: 7px 14px; border: 1px solid #d2d2d7; border-radius: 8px; font-size: 13px; color: #0071e3; cursor: pointer; background: #fff; }
+        .upload-btn:hover { background: #f5faff; border-color: #0071e3; }
+
+        .kbd-tip { max-width: none; margin: 8px 16px; padding: 0; font-size: 12.5px; color: #86868b; }
+        .kbd { display: inline-block; background: #fff; border: 1px solid #d2d2d7; border-radius: 5px; padding: 1px 7px; margin: 0 2px; font-family: monospace; }
+        .saved-flash { color: #34c759; font-size: 12px; margin-left: 8px; }
+
+        .img-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 2000; cursor: zoom-out; }
+        .img-modal img { max-width: 92vw; max-height: 92vh; border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5); }
+        .img-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; font-size: 40px; color: #fff; background: rgba(255,255,255,0.12); border-radius: 50%; cursor: pointer; user-select: none; }
+        .img-nav:hover { background: rgba(255,255,255,0.28); }
+        .img-nav.prev { left: 32px; } .img-nav.next { right: 32px; }
+        .img-count { position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%); color: #fff; font-size: 14px; background: rgba(0,0,0,0.5); padding: 4px 14px; border-radius: 980px; }
+        .no-data { text-align: center; color: #86868b; padding: 80px 0; }
+    </style>
+</head>
+<body>
+<div id="app">
+    <div class="header">
+        <div class="header-left">
+            <h1>搜索评测系统</h1>
+            <nav>
+                <a href="/detail">首页</a>
+                <span class="sep">|</span>
+                <a href="/annotate" class="active">标注工作台</a>
+                <span class="sep">|</span>
+                <a href="/analysis">可视化分析</a>
+                <span class="sep">|</span>
+                <a href="/">数据管理</a>
+            </nav>
+        </div>
+        <div class="header-actions">
+            <select v-model="activeTestSet">
+                <option v-for="ts in testSets" :key="ts.id" :value="ts.id">{{ ts.name }}</option>
+            </select>
+            <input class="search-box" v-model="jump" @keyup.enter="doJump" placeholder="跳到 编号/内容…" />
+            <button class="mini-search" @click="doJump" title="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
+            <label class="toggle"><input type="checkbox" v-model="onlyUnscored" /> 只看未标注</label>
+            <span v-if="locked" class="lock-badge">🔒 已锁定（只读）</span>
+            <button v-if="!capRunning" class="cap-btn" @click="startCapture">▶ 开始标注</button>
+            <button v-if="capRunning" class="cap-btn running" @click="capOpen=true"><span class="cap-dot"></span>标注进行中</button>
+            <button v-if="capRunning" class="cap-pause" @click="stopCapture">⏸ 中断</button>
+            <button v-if="locked" class="cap-unlock" @click="unlockEdit">🔓 解锁编辑</button>
+            <button v-else class="cap-finish" @click="finishCapture">⏹ 结束标注</button>
+        </div>
+    </div>
+
+    <!-- 采集脚本运行状态浮层 -->
+    <div class="cap-panel" v-if="capOpen">
+        <div class="cap-head">
+            <span>自动化标注脚本</span>
+            <span class="cap-x" @click="capOpen=false">✕</span>
+        </div>
+        <div class="cap-body">
+            <div class="cap-line" :class="capStatus">
+                状态：{{ ({idle:'待机', starting:'启动中', running:'运行中', done:'已完成', error:'出错', stopped:'已停止'}[capStatus] || capStatus) }}
+                <template v-if="capTot"> · {{ capCur }}/{{ capTot }}</template>
+            </div>
+            <div class="cap-log">
+                <div v-for="(l,i) in capProgress" :key="i">{{ l }}</div>
+            </div>
+            <div class="cap-tip">脚本在<b>运行服务器的这台电脑</b>上操作游戏（需已打开游戏、坐标匹配）。F9 截图 / F10 跳过。</div>
+            <div class="cap-actions">
+                <button v-if="capRunning" class="cap-stop" @click="stopCapture">■ 停止</button>
+                <button v-else class="cap-start" @click="startCapture">▶ 开始标注</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="progress-wrap" v-if="list.length">
+        <div class="nav-btns">
+            <button @click="prev" :disabled="idx<=0">← 上一条</button>
+            <span class="idx-txt">{{ idx+1 }} / {{ list.length }}</span>
+            <button @click="next" :disabled="idx>=list.length-1">下一条 →</button>
+        </div>
+        <div class="progress-bar"><div class="progress-fill" :style="{width: scoredPct}"></div></div>
+        <div class="progress-txt">已标 {{ scoredCount }} / {{ queries.length }}（{{ scoredPct }}）<span v-if="flash" class="saved-flash">✓ 已保存</span></div>
+    </div>
+
+    <div class="board" :class="{ 'locked-ro': locked }" v-if="cur">
+        <div class="card">
+            <!-- 左：query 信息 + 图集 -->
+            <div class="col">
+                <div class="col-title">Query 信息</div>
+                <span class="qid">#{{ cur.id }}</span>
+                <div class="qtext">{{ cur.query }}</div>
+                <div class="meta-grid">
+                    <span class="k">长度</span><span class="v">{{ cur.query_length ?? '-' }}</span>
+                    <span class="k">搜索次数</span><span class="v">{{ cur.search_count ?? '-' }}</span>
+                    <span class="k">业务类别</span><span class="v">{{ cur.business_category || '-' }}</span>
+                    <span class="k">Query层级</span><span class="v">{{ cur.is_short_query || '-' }}</span>
+                    <span class="k">频率层级</span><span class="v">{{ cur.frequency_level || '-' }}</span>
+                </div>
+                <div class="col-title">搜索结果图集</div>
+                <div v-if="galleryOf(cur).length" class="gallery">
+                    <figure v-for="(g,i) in galleryOf(cur)" :key="i">
+                        <img :src="g.url" @click="zoom(g.url)" />
+                        <figcaption>{{ g.label }}</figcaption>
+                    </figure>
+                </div>
+                <div v-else class="no-img">暂无截图（可先采集，或跑脚本上传）</div>
+            </div>
+
+            <!-- 中：评分 -->
+            <div class="col">
+                <div class="col-title">评分（键盘 1–5 打分，Tab 切维度，Enter 下一条）</div>
+                <div v-for="(d,di) in scoreDims" :key="d.field" class="dim" :class="{active: di===dimIdx}" @click="dimIdx=di">
+                    <div class="dim-label"><span>{{ d.label }}</span><span class="hint" v-if="di===dimIdx">← 当前</span></div>
+                    <div class="chips">
+                        <div v-for="n in 5" :key="n" class="chip" :class="{sel: Number(cur[d.field])===n, ['s'+n]: Number(cur[d.field])===n}" @click.stop="setScore(d.field, n)">{{ n }}</div>
+                    </div>
+                </div>
+                <div class="ai-total">
+                    <div>
+                        <div class="col-title" style="margin:0">AI综合分</div>
+                        <div class="big">{{ aiScore(cur) }}</div>
+                    </div>
+                </div>
+                <div class="block" style="margin-top:16px">
+                    <div class="col-title" style="margin:0 0 8px">与文本搜相比 <span style="font-weight:400;text-transform:none">（Q 优 / W 平 / E 劣）</span></div>
+                    <div class="vs-row">
+                        <div class="vs-btn" :class="{'sel-win': String(cur.vs_text_search)==='1'}" @click="setVs('1')">AI优</div>
+                        <div class="vs-btn" :class="{'sel-draw': String(cur.vs_text_search)==='0'}" @click="setVs('0')">持平</div>
+                        <div class="vs-btn" :class="{'sel-lose': String(cur.vs_text_search)==='-1'}" @click="setVs('-1')">AI劣</div>
+                    </div>
+                </div>
+                <div class="block">
+                    <div class="col-title" style="margin:0 0 8px">是否推出目标地图 <span style="font-weight:400;text-transform:none">（Y 是 / N 否）</span></div>
+                    <div class="vs-row">
+                        <div class="vs-btn" :class="{'sel-win': Number(cur[targetField])===1}" @click="setTarget(1)">是</div>
+                        <div class="vs-btn" :class="{'sel-lose': Number(cur[targetField])===0}" @click="setTarget(0)">否</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右：理想地图 + 备注 -->
+            <div class="col">
+                <div class="col-title">理想地图 / 备注</div>
+                <div class="block">
+                    <div class="block-h">🎯 理想地图（期望）</div>
+                    <textarea class="remark" style="min-height:70px" v-model="cur.expected_result" @blur="saveField('expected_result', cur.expected_result)" placeholder="期望搜索到的地图/结果描述…"></textarea>
+                    <img v-if="cur.expected_screenshot" :src="cur.expected_screenshot" class="thumb" @click="zoom(cur.expected_screenshot)" />
+                    <label class="upload-btn">
+                        {{ uploading==='expected_screenshot' ? '上传中…' : (cur.expected_screenshot ? '↻ 换期望截图' : '＋ 上传期望截图') }}
+                        <input type="file" accept="image/*" style="display:none" @change="uploadImg('expected_screenshot', $event)" />
+                    </label>
+                </div>
+                <div class="block">
+                    <div class="block-h">📝 搜索结果说明</div>
+                    <textarea class="remark" style="min-height:70px" v-model="cur.search_result" @blur="saveField('search_result', cur.search_result)" placeholder="实际搜索结果的补充说明…"></textarea>
+                </div>
+                <div class="block">
+                    <div class="block-h">✏️ 标注备注（文案/推荐语）</div>
+                    <textarea class="remark" v-model="cur.copy_recommendation" @blur="saveField('copy_recommendation', cur.copy_recommendation)" placeholder="记录问题、可能原因、改进建议…"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div v-else class="no-data">无数据{{ onlyUnscored ? '（未标注已清空，切换筛选看看）' : '' }}</div>
+
+    <div class="kbd-tip" v-if="cur">
+        快捷键：<span class="kbd">1</span>–<span class="kbd">5</span> 给当前维度打分并自动跳下一维度 ·
+        <span class="kbd">Tab</span> 切维度 · <span class="kbd">Enter</span> 下一条 ·
+        <span class="kbd">←</span>/<span class="kbd">→</span> 上/下一条 ·
+        <span class="kbd">Q</span>/<span class="kbd">W</span>/<span class="kbd">E</span> 对比 优/平/劣 ·
+        <span class="kbd">Y</span>/<span class="kbd">N</span> 是否推出目标地图
+    </div>
+
+    <div v-if="modalImage" class="img-modal" @click="modalImage = null">
+        <div v-if="modalImages.length > 1" class="img-nav prev" @click.stop="mnav(-1)">‹</div>
+        <img :src="modalImage" @click.stop />
+        <div v-if="modalImages.length > 1" class="img-nav next" @click.stop="mnav(1)">›</div>
+        <div v-if="modalImages.length > 1" class="img-count">{{ modalIdx + 1 }} / {{ modalImages.length }}</div>
+    </div>
+
+    <div v-if="blocked" class="lock-toast">🔒 已锁定，请先点右上角「解锁编辑」</div>
+</div>
+
+<script>
+const { createApp, ref, computed, onMounted, watch } = Vue;
+
+createApp({
+    setup() {
+        const testSets = ref([]);
+        const activeTestSet = ref(1);
+        const queries = ref([]);
+        const imageFields = ref([]);   // custom image column fields
+        const idx = ref(0);
+        const dimIdx = ref(0);
+        const jump = ref('');
+        const onlyUnscored = ref(false);
+        const flash = ref(false);
+        const uploading = ref(null);
+        const modalImage = ref(null);
+        const modalImages = ref([]);
+        const modalIdx = ref(0);
+
+        const scoreDims = [
+            { field: 'relevance', label: '相关性' },
+            { field: 'ranking', label: '排序合理性' },
+            { field: 'quality_threshold', label: '质量门槛' },
+        ];
+        const SCORE_FIELDS = scoreDims.map(d => d.field);
+        const targetField = 'custom_是否推出目标地图';
+
+        const isScored = (q) => SCORE_FIELDS.some(f => q[f] != null && q[f] !== '');
+        const aiScore = (q) => {
+            const vals = SCORE_FIELDS.map(f => q[f]).filter(v => v != null && v !== '');
+            if (!vals.length) return '-';
+            return (vals.reduce((a, b) => a + Number(b), 0) / vals.length).toFixed(2);
+        };
+
+        const list = computed(() => onlyUnscored.value ? queries.value.filter(q => !isScored(q)) : queries.value);
+        const cur = computed(() => list.value[idx.value] || null);
+        const scoredCount = computed(() => queries.value.filter(isScored).length);
+        const scoredPct = computed(() => queries.value.length ? Math.round(scoredCount.value / queries.value.length * 100) + '%' : '0%');
+
+        const galleryOf = (q) => {
+            const g = [];
+            const isAi = (label) => /ai\s*搜/i.test(label || '');
+            // 1) AI 搜主图
+            if (q.ai_screenshot_url) g.push({ url: q.ai_screenshot_url, label: 'AI搜结果' });
+            // 2) 紧接着 AI 类自定义截图（如 AI搜截图2）
+            imageFields.value.forEach(f => { if (isAi(f.label) && q[f.field]) g.push({ url: q[f.field], label: f.label }); });
+            // 3) 文本搜结果
+            if (q.text_screenshot_url) g.push({ url: q.text_screenshot_url, label: '文本搜结果' });
+            // 4) 其它自定义图片列
+            imageFields.value.forEach(f => { if (!isAi(f.label) && q[f.field]) g.push({ url: q[f.field], label: f.label }); });
+            return g;
+        };
+
+        const flashSaved = () => { flash.value = true; setTimeout(() => flash.value = false, 1200); };
+        const save = async (id, body) => {
+            if (locked.value) { blocked.value = true; setTimeout(() => blocked.value = false, 1800); return; }
+            const res = await fetch(`/api/queries/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (res.ok) { const u = await res.json(); const i = queries.value.findIndex(q => q.id === id); if (i >= 0) queries.value[i] = u; flashSaved(); }
+            else if (res.status === 423) { blocked.value = true; setTimeout(() => blocked.value = false, 1800); }
+        };
+        const setScore = (field, n) => {
+            if (!cur.value) return;
+            const id = cur.value.id;
+            const toggleOff = Number(cur.value[field]) === n;
+            const newVal = toggleOff ? null : n;
+            const merged = { ...cur.value, [field]: newVal };
+            const vals = SCORE_FIELDS.map(f => merged[f]).filter(v => v != null && v !== '');
+            const body = { [field]: newVal };
+            body.ai_search_score = vals.length ? parseFloat((vals.reduce((a, b) => a + Number(b), 0) / vals.length).toFixed(2)) : null;
+            save(id, body);
+            if (!toggleOff) {
+                const di = scoreDims.findIndex(d => d.field === field);
+                if (di < scoreDims.length - 1) dimIdx.value = di + 1;
+            }
+        };
+        const setVs = (v) => { if (cur.value) save(cur.value.id, { vs_text_search: String(cur.value.vs_text_search) === String(v) ? null : v }); };
+        const setTarget = (v) => { if (cur.value) save(cur.value.id, { [targetField]: Number(cur.value[targetField]) === Number(v) ? null : v }); };
+        const saveField = (field, val) => { if (cur.value) save(cur.value.id, { [field]: val }); };
+        const uploadImg = async (field, e) => {
+            const f = e.target.files[0];
+            if (!f || !cur.value) return;
+            uploading.value = field;
+            try {
+                const fd = new FormData();
+                fd.append('file', f);
+                const resp = await fetch(`/api/upload-field-image?query_id=${cur.value.id}&field=${field}`, { method: 'POST', body: fd });
+                const data = await resp.json();
+                if (data.url) await save(cur.value.id, { [field]: data.url });
+            } finally { uploading.value = null; e.target.value = ''; }
+        };
+
+        const prev = () => { if (idx.value > 0) { idx.value--; dimIdx.value = 0; } };
+        const next = () => { if (idx.value < list.value.length - 1) { idx.value++; dimIdx.value = 0; } };
+        const doJump = () => {
+            const t = jump.value.trim().toLowerCase();
+            if (!t) return;
+            let i = list.value.findIndex(q => String(q.id) === t);
+            if (i < 0) i = list.value.findIndex(q => (q.query || '').toLowerCase().includes(t));
+            if (i >= 0) { idx.value = i; dimIdx.value = 0; }
+        };
+
+        const zoom = (url) => {
+            modalImages.value = cur.value ? galleryOf(cur.value).map(g => g.url) : [url];
+            if (cur.value && cur.value.expected_screenshot) modalImages.value.push(cur.value.expected_screenshot);
+            modalIdx.value = Math.max(0, modalImages.value.indexOf(url));
+            modalImage.value = url;
+        };
+        const mnav = (d) => {
+            if (modalImages.value.length < 2) return;
+            modalIdx.value = (modalIdx.value + d + modalImages.value.length) % modalImages.value.length;
+            modalImage.value = modalImages.value[modalIdx.value];
+        };
+
+        // ===== 自动化采集脚本控制 =====
+        const capRunning = ref(false);
+        const capStatus = ref('idle');
+        const capProgress = ref([]);
+        const capCur = ref(0);
+        const capTot = ref(0);
+        const capOpen = ref(false);
+        let capTimer = null;
+
+        const pollCap = async () => {
+            try {
+                const s = await (await fetch('/api/test/status')).json();
+                capRunning.value = !!s.running;
+                capStatus.value = s.status || 'idle';
+                capProgress.value = (s.progress || []).slice(-8);
+                capCur.value = s.current || 0;
+                capTot.value = s.total || 0;
+            } catch {}
+        };
+        const startCapture = async () => {
+            if (capRunning.value) { capOpen.value = true; return; }
+            capOpen.value = true;
+            capProgress.value = ['正在启动脚本，请切到游戏窗口…'];
+            try {
+                const r = await fetch('/api/test/start', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ test_set_id: activeTestSet.value })
+                });
+                const d = await r.json();
+                if (!r.ok) { capProgress.value = [d.detail || '启动失败']; return; }
+                capRunning.value = true;
+            } catch (e) { capProgress.value = ['启动失败: ' + e]; }
+        };
+        const stopCapture = async () => {
+            try { await fetch('/api/test/stop', { method: 'POST' }); } catch {}
+            capRunning.value = false;
+            capStatus.value = 'stopped';
+        };
+        // ===== 锁定 / 结束 / 解锁 =====
+        const tsStatus = ref('labeling');
+        const locked = computed(() => tsStatus.value === 'locked');
+        const blocked = ref(false);
+        const finishCapture = async () => {
+            if (capRunning.value) { try { await fetch('/api/test/stop', { method: 'POST' }); } catch {} }
+            try {
+                await fetch('/api/test/finish', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ test_set_id: activeTestSet.value })
+                });
+            } catch {}
+            capRunning.value = false;
+            capStatus.value = 'finished';
+            tsStatus.value = 'locked';
+            const t = testSets.value.find(x => x.id === activeTestSet.value); if (t) t.status = 'locked';
+        };
+        const unlockEdit = async () => {
+            try {
+                await fetch(`/api/test-sets/${activeTestSet.value}/status`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'labeling' })
+                });
+            } catch {}
+            tsStatus.value = 'labeling';
+            const t = testSets.value.find(x => x.id === activeTestSet.value); if (t) t.status = 'labeling';
+        };
+
+        const loadTestSets = async () => {
+            testSets.value = await (await fetch('/api/test-sets')).json();
+            const saved = localStorage.getItem('active_test_set');
+            if (saved && testSets.value.find(t => t.id === parseInt(saved))) activeTestSet.value = parseInt(saved);
+            else if (testSets.value.length) activeTestSet.value = testSets.value[0].id;
+        };
+        const loadData = async () => {
+            localStorage.setItem('active_test_set', activeTestSet.value);
+            const t = testSets.value.find(x => x.id === activeTestSet.value);
+            tsStatus.value = (t && t.status) || 'labeling';
+            const cols = await (await fetch(`/api/custom-columns?test_set_id=${activeTestSet.value}`)).json();
+            imageFields.value = cols.filter(c => c.type === 'image');
+            queries.value = await (await fetch(`/api/queries?test_set_id=${activeTestSet.value}`)).json();
+            idx.value = 0; dimIdx.value = 0;
+        };
+
+        watch(activeTestSet, loadData);
+        watch(onlyUnscored, () => { idx.value = 0; dimIdx.value = 0; });
+
+        const onKey = (e) => {
+            if (modalImage.value) {
+                if (e.key === 'ArrowLeft') mnav(-1);
+                else if (e.key === 'ArrowRight') mnav(1);
+                else if (e.key === 'Escape') modalImage.value = null;
+                return;
+            }
+            const tag = (document.activeElement && document.activeElement.tagName) || '';
+            if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+            if (!cur.value) return;
+            if (e.key >= '1' && e.key <= '5') { e.preventDefault(); setScore(scoreDims[dimIdx.value].field, Number(e.key)); }
+            else if (e.key === 'Tab') { e.preventDefault(); dimIdx.value = (dimIdx.value + (e.shiftKey ? -1 : 1) + scoreDims.length) % scoreDims.length; }
+            else if (e.key === 'Enter') { e.preventDefault(); next(); }
+            else if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+            else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+            else if (e.key.toLowerCase() === 'q') setVs('1');
+            else if (e.key.toLowerCase() === 'w') setVs('0');
+            else if (e.key.toLowerCase() === 'e') setVs('-1');
+            else if (e.key.toLowerCase() === 'y') setTarget(1);
+            else if (e.key.toLowerCase() === 'n') setTarget(0);
+        };
+
+        onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); });
+
+        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
+    }
+}).mount('#app');
+</script>
+</body>
+</html>
