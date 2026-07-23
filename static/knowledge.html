@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>知识规范 - 搜索评测系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; background: #f5f5f7; color: #1d1d1f; }
+        .header { display: flex; align-items: center; justify-content: space-between; padding: 14px 28px; background: #fff; border-bottom: 1px solid #e8e8ed; position: sticky; top: 0; z-index: 100; }
+        .header-left { display: flex; align-items: center; gap: 24px; }
+        h1 { font-size: 20px; font-weight: 600; }
+        nav { display: flex; align-items: center; gap: 14px; }
+        nav a { text-decoration: none; font-size: 14px; font-weight: 500; color: #86868b; }
+        nav a.active { color: #1d1d1f; font-weight: 600; }
+        nav .sep { color: #d2d2d7; }
+        .container { max-width: 1080px; margin: 24px auto 70px; padding: 0 20px; }
+        .hero { background: linear-gradient(120deg, #0071e3, #4a9eff); color: #fff; border-radius: 18px; padding: 26px 30px; margin-bottom: 22px; box-shadow: 0 4px 18px rgba(0,113,227,0.25); }
+        .hero-title { font-size: 24px; font-weight: 700; }
+        .hero-sub { font-size: 14px; opacity: 0.92; margin-top: 6px; }
+        .toc { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
+        .toc a { font-size: 13px; font-weight: 600; color: #0071e3; text-decoration: none; background: #eaf3ff; padding: 7px 14px; border-radius: 20px; }
+        .toc a:hover { background: #d6e9ff; }
+        .card { background: #fff; border-radius: 14px; padding: 22px 24px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .sec-title { font-size: 19px; font-weight: 700; margin-bottom: 4px; scroll-margin-top: 80px; }
+        .sub-title { font-size: 15px; font-weight: 600; margin: 20px 0 10px; color: #1d1d1f; }
+        .sub-title:first-of-type { margin-top: 14px; }
+        p.note { font-size: 13.5px; color: #555; line-height: 1.8; margin: 8px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 6px 0; }
+        th, td { border: 1px solid #e6e6ec; padding: 9px 11px; text-align: left; vertical-align: top; line-height: 1.65; }
+        th { background: #f5f7fa; font-weight: 600; color: #333; }
+        td.center, th.center { text-align: center; white-space: nowrap; }
+        tr:nth-child(even) td { background: #fafbfc; }
+        .tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px; color: #fff; }
+        .tag.y { background: #0071e3; }
+        .examples { color: #555; line-height: 1.9; }
+        .examples span { display: inline-block; background: #f0f2f5; border-radius: 6px; padding: 1px 8px; margin: 2px 3px 2px 0; font-size: 12.5px; }
+        ul.rules { margin: 8px 0 0 4px; list-style: none; }
+        ul.rules li { padding: 6px 0 6px 26px; position: relative; font-size: 14px; line-height: 1.6; border-bottom: 1px dashed #eee; }
+        ul.rules li:last-child { border-bottom: none; }
+        ul.rules li::before { content: "⛔"; position: absolute; left: 0; }
+        .scale { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+        .scale div { flex: 1; min-width: 110px; text-align: center; border-radius: 10px; padding: 12px 8px; color: #fff; font-size: 13px; font-weight: 600; }
+        .s1 { background: #ff3b30; } .s2 { background: #ff9500; } .s3 { background: #ffcc00; color:#5a4700; } .s4 { background: #34c759; } .s5 { background: #0071e3; }
+        .scale small { display: block; font-size: 18px; font-weight: 800; margin-bottom: 2px; }
+        .milestone td { background: #fff8e6 !important; font-weight: 600; }
+        .guide { color: #444; }
+        .guide b { color: #0071e3; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>搜索评测系统</h1>
+            <nav>
+                <a href="/detail">首页</a>
+                <span class="sep">|</span>
+                <a href="/knowledge" class="active">知识规范</a>
+                <span class="sep">|</span>
+                <a href="/annotate">标注工作台</a>
+                <span class="sep">|</span>
+                <a href="/analysis">可视化分析</a>
+                <span class="sep">|</span>
+                <a href="/data">数据管理</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-title">📖 标注知识与规范</div>
+            <div class="hero-sub">AI 搜索边界定义 · 评测打分标准 · 执行安排 · 测评集处理</div>
+        </div>
+
+        <div class="toc">
+            <a href="#s1">1 · AI 搜索边界定义</a>
+            <a href="#s2">2 · 评测标准</a>
+            <a href="#s3">3 · 执行安排</a>
+            <a href="#s4">4 · 测评集处理</a>
+        </div>
+
+        <!-- ============ 1 ============ -->
+        <div class="card">
+            <div class="sec-title" id="s1">1、AI 搜索边界定义</div>
+
+            <div class="sub-title">1.1 AI 搜场景定义</div>
+            <table>
+                <thead>
+                    <tr><th class="center">场景编号</th><th>场景名称</th><th>判断特征</th><th>query 举例</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-1</span></td>
+                        <td>场景限定（场景化 query）</td>
+                        <td>完整句子 / 口语化表达（主谓宾完整，语序正常）、含<b>形容词</b>或<b>比较意图</b>（"最 / 比较 / 适合 / 非常 / 超级"）、指明玩家人数、关系或场景</td>
+                        <td class="examples">
+                            <span>我要那种让人害怕的地图</span><span>给我一个老六图手残党也能过</span><span>我想找一张绿色的跑酷图中等难度</span><span>正版的逃出惊魂夜</span><span>最难的跑酷</span><span>非常恐怖的地图</span><span>世界上最难的地图</span><span>两个人一起玩的图</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-2</span></td>
+                        <td>描述地图玩法 / 作者 / 技能的需求</td>
+                        <td>描述地图玩法，多个名词罗列，无明确语法结构（若与地图名重合，则判断是否属于其他场景类型：属于则仍判为 AI 搜索词，不属于则判为非 AI 搜索词）</td>
+                        <td class="examples">
+                            <span>过两关变成一个追捕</span><span>过一关赚个食物效果</span><span>给我一个特性里面有卡道具的</span><span>爬到很高然后掉下来的地图</span><span>没跳一下屏幕破碎加一</span><span>每过15秒变一次主播</span><span>超级恐怖的地图</span><span>一步一存档的长跑酷</span><span>恐怖 双人 跑酷</span><span>搞笑整蛊老六</span><span>1v1v1三人对战擂台地图</span><span>简单双人</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-3</span></td>
+                        <td>疑问句 / 问句</td>
+                        <td>含疑问词（有没有 / 能不能 / 哪里 / 哪个 / 什么 / 怎么）</td>
+                        <td class="examples">
+                            <span>有没有练刀的对战地图？</span><span>有没有那种手感非常好的练刀图</span><span>能不能给我一个老六图但手残党也能过的</span><span>什么地图好玩</span><span>什么跑车可以飞过岩浆？</span><span>在吗？</span><span>逃出什么夜</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-4</span></td>
+                        <td>否定 / 排除表达</td>
+                        <td>含 "不要 / 不想 / 除了 / 别" 等否定词</td>
+                        <td class="examples"><span>不要太恐怖的地图</span><span>除了跑酷还有什么好玩的</span></td>
+                    </tr>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-5</span></td>
+                        <td>逻辑混乱 / 表达模糊</td>
+                        <td>无法明确完整含义、无法理解</td>
+                        <td class="examples"><span>玩的一个飞行模拟器</span><span>双的不是</span><span>aaaa…bbbb…mmkknj</span><span>游戏</span><span>恶搞</span><span>开始</span><span>蛋仔二 d</span></td>
+                    </tr>
+                    <tr>
+                        <td class="center"><span class="tag y">Y-6</span></td>
+                        <td>英文 query</td>
+                        <td>纯英文 query</td>
+                        <td class="examples"><span>（纯英文）</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="sub-title">黑名单（精搜锁定，不计入 AI 搜）</div>
+            <ul class="rules">
+                <li>query 命中地图名或与地图名相近</li>
+                <li>query 命中作者名字</li>
+                <li>query 命中地图码</li>
+                <li>query 乱码（前期排除）</li>
+            </ul>
+        </div>
+
+        <!-- ============ 2 ============ -->
+        <div class="card">
+            <div class="sec-title" id="s2">2、评测标准</div>
+
+            <div class="sub-title">2.1 人工打分</div>
+            <table>
+                <thead>
+                    <tr><th class="center">#</th><th>维度</th><th>衡量什么</th><th>打分指引</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="center">1</td><td>相关性</td><td>返回的所有地图跟 query 意图对不对</td><td class="guide"><b>5</b>=基本完全匹配，<b>3</b>=部分匹配部分无关，<b>1</b>=完全无关</td></tr>
+                    <tr><td class="center">2</td><td>准确性</td><td>是否准确匹配到理想地图，返回内容是否存在明显错误（逻辑错误）</td><td class="guide"><b>5</b>=完全匹配到理想地图（且无逻辑错误），<b>3</b>=相关但不是最佳，<b>1</b>=完全不理想（甚至理解错误反向推荐）</td></tr>
+                    <tr><td class="center">3</td><td>排序合理性</td><td>排在前面的是不是比后面的更好</td><td class="guide"><b>5</b>=排序完美，<b>3</b>=前 3 有不该出现的，<b>1</b>=排序混乱 / 颠倒</td></tr>
+                    <tr><td class="center">4</td><td>质量门槛</td><td>推荐的地图本身质量如何（点赞数 / 完成率等）</td><td class="guide"><b>5</b>=都是精品，<b>3</b>=混入了低质量图，<b>1</b>=大量垃圾图</td></tr>
+                    <tr><td class="center">5</td><td>个性化（多样性）</td><td>结果是否丰富多样</td><td class="guide"><b>5</b>=非常丰富（3 种不同类型），<b>3</b>=大致丰富（2 种类型），<b>1</b>=完全同质化</td></tr>
+                    <tr><td class="center">6</td><td>文案 / 推荐语</td><td>若有 AI 生成文案，读起来是否自然有帮助</td><td class="guide"><b>5</b>=有信息量且自然，<b>3</b>=正确但无聊，<b>1</b>=AI 味重或有误导</td></tr>
+                    <tr><td class="center">7</td><td>与文本搜相比</td><td>AI 搜效果是否优于文本搜</td><td class="guide"><b>-1</b>=不如文本搜，<b>0</b>=与文本搜差不多，<b>1</b>=优于文本搜</td></tr>
+                    <tr><td class="center">8</td><td>是否推出目标地图</td><td>是否推出目标地图</td><td class="guide"><b>0</b>=未推出，<b>1</b>=推出，<b>空缺</b>=不清楚 / 不确定</td></tr>
+                </tbody>
+            </table>
+
+            <div class="sub-title">打分量表（1–5 分）</div>
+            <div class="scale">
+                <div class="s1"><small>1</small>完全不可接受</div>
+                <div class="s2"><small>2</small>较差</div>
+                <div class="s3"><small>3</small>及格 / 一般</div>
+                <div class="s4"><small>4</small>良好</div>
+                <div class="s5"><small>5</small>优秀</div>
+            </div>
+
+            <div class="sub-title">2.2 系统指标（自动化采集）</div>
+            <table>
+                <thead>
+                    <tr><th class="center">#</th><th>维度</th><th>衡量什么</th><th>怎么衡量</th><th>达标线</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="center">8</td><td>稳定性</td><td>同一 query 多次搜索结果是否一致</td><td>脚本自动搜 3 次，计算结果重叠率</td><td>重叠率 &gt; 90% 为稳定</td></tr>
+                    <tr><td class="center">9</td><td>实时性</td><td>新上架 / 热门地图多快能被搜到</td><td>新地图发布后定时搜索，记录首次出现时间</td><td>24h 内可搜到为达标</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ============ 3 ============ -->
+        <div class="card">
+            <div class="sec-title" id="s3">3、执行安排</div>
+            <table>
+                <thead>
+                    <tr><th class="center">日期（星期）</th><th>周次</th><th>事项</th><th>备注</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="center">6/25（四）</td><td>第 0 周</td><td>收集 &amp; 处理数据集 v1.0</td><td>执行 Step 1-13，产出 623 条评测集</td></tr>
+                    <tr><td class="center">6/26（五）</td><td></td><td>搭建评测 Web</td><td>部署工具、录入数据、配置打分流程</td></tr>
+                    <tr class="milestone"><td class="center">6/29（一）</td><td></td><td>第 1 轮评测</td><td>🏁 里程碑：基线分数产出</td></tr>
+                    <tr><td class="center">7/1（三）</td><td></td><td>评测结果分析</td><td>输出三层诊断报告，反馈研发</td></tr>
+                    <tr><td class="center">7/3（五）</td><td>第 1 周</td><td>更新数据集至 v1.1</td><td>补充第 1 轮暴露的 bad case</td></tr>
+                    <tr><td class="center">7/6（一）</td><td></td><td>第 2 轮评测</td><td></td></tr>
+                    <tr><td class="center">7/8（三）</td><td></td><td>评测分析</td><td>与第 1 轮对比，输出 diff 报告</td></tr>
+                    <tr><td class="center">7/10（五）</td><td>第 2 周</td><td>更新数据集至 v1.2</td><td></td></tr>
+                    <tr><td class="center">7/13（一）</td><td></td><td>第 3 轮评测</td><td></td></tr>
+                    <tr class="milestone"><td class="center">7/15（三）</td><td></td><td>评测分析</td><td>🏁 里程碑：前 3 轮趋势总结，确认方向</td></tr>
+                    <tr><td class="center">7/17（五）</td><td>第 3 周</td><td>更新数据集至 v1.3</td><td></td></tr>
+                    <tr><td class="center">7/20（一）</td><td></td><td>第 4 轮评测</td><td></td></tr>
+                    <tr class="milestone"><td class="center">7/22（三）</td><td></td><td>评测分析</td><td>🏁 里程碑：中期复盘，评估是否调整框架权重</td></tr>
+                    <tr><td class="center">7/24（五）</td><td>第 4 周</td><td>更新数据集至 v1.4</td><td></td></tr>
+                    <tr><td class="center">7/27（一）</td><td></td><td>第 5 轮评测</td><td>答辩前</td></tr>
+                    <tr class="milestone"><td class="center">7/29（三）</td><td></td><td>评测分析</td><td>🏁 里程碑：Anchor 纵向对比，确认没退步</td></tr>
+                    <tr><td class="center">7/31（五）</td><td>第 5 周</td><td>更新数据集至 v1.5</td><td></td></tr>
+                    <tr><td class="center">8/3（一）</td><td></td><td>第 6 轮评测</td><td></td></tr>
+                    <tr><td class="center">8/5（三）</td><td></td><td>评测分析</td><td></td></tr>
+                    <tr><td class="center">8/7（五）</td><td>第 6 周</td><td>更新数据集至 v1.6</td><td></td></tr>
+                    <tr><td class="center">8/10（一）</td><td></td><td>第 7 轮评测</td><td></td></tr>
+                    <tr><td class="center">8/12（三）</td><td></td><td>评测分析</td><td></td></tr>
+                    <tr><td class="center">8/14（五）</td><td>第 7 周</td><td>更新数据集至 v1.7</td><td></td></tr>
+                    <tr><td class="center">8/17（一）</td><td></td><td>第 8 轮评测</td><td></td></tr>
+                    <tr class="milestone"><td class="center">8/19（三）</td><td></td><td>评测分析</td><td>🏁 里程碑：两个月总复盘，结论——能否上线</td></tr>
+                    <tr><td class="center">8/21（五）</td><td>收尾周</td><td>数据集定稿 v2.0</td><td></td></tr>
+                    <tr><td class="center">8/24（一）</td><td></td><td>终期评测（可选）</td><td></td></tr>
+                    <tr class="milestone"><td class="center">8/26（三）</td><td></td><td>输出最终交付物</td><td>🏁 交付：评测报告 + 数据集 + 迭代记录</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- ============ 4 ============ -->
+        <div class="card">
+            <div class="sec-title" id="s4">4、测评集处理</div>
+            <p class="note">按照 query 长短和搜索频率占比进行抽样，已筛选出 <b>500 个词</b>。基于筛选出的 500 个词，手动打标归类（或写提示词让 AI 打标），全面覆盖每个类别。</p>
+            <p class="note">关注 query 搜索次数，保持 <b>60% 具有代表性</b>；若达不到 500 词可适当放宽限制。</p>
+            <div class="sub-title">开放思考</div>
+            <p class="note">· AI 搜索是否包含其他生态：搜房间 / 开店信息？搜更新信息？搜地图评选结果？搜活动信息（工匠大赛）？搜评论？工坊更新信息？根据用户画像推荐？搜游戏内任务名、人物名（需自建数据）？新闻？</p>
+            <p class="note">· 或许可以增加一点 AI 的 p 值（回答更自由，增加一些 AI 的思考）；蛋壳里的内容？</p>
+            <p class="note">· 蛋仔用户的搜索需求（痛点、痒点）是什么，想搜到什么样的内容？</p>
+            <p class="note">· 蛋仔对比其他平台的优势、短板，特色在哪里？</p>
+        </div>
+    </div>
+</body>
+</html>
