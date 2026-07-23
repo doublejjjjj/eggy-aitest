@@ -17,7 +17,7 @@ import aiosqlite
 import openpyxl
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse
+from fastapi.responses import FileResponse, StreamingResponse, HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -2249,8 +2249,13 @@ async def finish_test(body: dict = {}):
 # Frontend
 # ============================================================
 
-@app.get("/", response_class=HTMLResponse)
+@app.get("/")
 async def index():
+    return RedirectResponse(url="/detail")
+
+
+@app.get("/data", response_class=HTMLResponse)
+async def data_page():
     html_path = os.path.join(STATIC_DIR, "index.html")
     with open(html_path, "r", encoding="utf-8") as f:
         return f.read()
