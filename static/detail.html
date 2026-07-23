@@ -65,10 +65,11 @@
         .no-data { text-align: center; color: #86868b; padding: 60px 0; }
 
         /* 首页 概览 + 导航 */
-        .hero { background: linear-gradient(120deg, #0071e3, #4a9eff); color: #fff; border-radius: 18px; padding: 28px 32px; margin-bottom: 20px; box-shadow: 0 4px 18px rgba(0,113,227,0.25); }
-        .hero-title { font-size: 26px; font-weight: 700; }
-        .hero-sub { font-size: 14px; opacity: 0.9; margin-top: 6px; }
-        .stat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 20px; }
+        .overview-top { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 2px 0 18px; }
+        .ov-title { font-size: 22px; font-weight: 700; }
+        .ov-meta { font-size: 13px; color: #86868b; }
+        .ov-meta b { color: #0071e3; font-weight: 600; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
         .stat-card { background: #fff; border-radius: 14px; padding: 18px 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
         .stat-num { font-size: 28px; font-weight: 700; color: #1d1d1f; line-height: 1.1; }
         .stat-num.blue { color: #0071e3; }
@@ -84,6 +85,16 @@
         .nav-name { font-size: 16px; font-weight: 600; }
         .nav-desc { font-size: 12px; color: #86868b; margin-top: 3px; }
         .section-title { font-size: 17px; font-weight: 600; margin: 4px 0 14px; display: flex; align-items: baseline; gap: 12px; }
+
+        @media (max-width: 960px) {
+            .header { flex-wrap: wrap; gap: 10px; padding: 12px 16px; }
+            .header-left { gap: 14px; }
+            nav { gap: 10px; }
+            .search-box { width: 160px; }
+            .container { margin: 16px auto; }
+            .card { grid-template-columns: 1fr; }
+            .col + .col { border-left: none; border-top: 1px solid #f0f0f2; }
+        }
     </style>
 </head>
 <body>
@@ -96,7 +107,7 @@
                 <span class="sep">|</span>
                 <a href="/annotate">标注工作台</a>
                 <span class="sep">|</span>
-                <a href="/analysis">可视化分析</a>
+                <a href="/analysis">数据分析</a>
                 <span class="sep">|</span>
                 <a href="/data">数据管理</a>
                 <span class="sep">|</span>
@@ -113,9 +124,9 @@
     </div>
 
     <div class="container">
-        <div class="hero">
-            <div class="hero-title">搜索评测标注系统</div>
-            <div class="hero-sub">当前测试集：{{ currentSetName }} · 共 {{ testSets.length }} 个测试集</div>
+        <div class="overview-top">
+            <div class="ov-title">首页概览</div>
+            <div class="ov-meta">当前测试集：<b>{{ currentSetName }}</b> · 共 {{ testSets.length }} 个测试集</div>
         </div>
 
         <div class="stat-grid">
@@ -149,7 +160,7 @@
             </a>
             <a href="/analysis" class="nav-card">
                 <div class="nav-ico c2">📊</div>
-                <div><div class="nav-name">可视化分析</div><div class="nav-desc">评分图表与答辩报告</div></div>
+                <div><div class="nav-name">数据分析</div><div class="nav-desc">评分图表与答辩报告</div></div>
             </a>
             <a href="/data" class="nav-card">
                 <div class="nav-ico c1">📋</div>

@@ -15,9 +15,9 @@
         nav a.active { color: #1d1d1f; font-weight: 600; }
         nav .sep { color: #d2d2d7; }
         .container { max-width: 1080px; margin: 24px auto 70px; padding: 0 20px; }
-        .hero { background: linear-gradient(120deg, #0071e3, #4a9eff); color: #fff; border-radius: 18px; padding: 26px 30px; margin-bottom: 22px; box-shadow: 0 4px 18px rgba(0,113,227,0.25); }
-        .hero-title { font-size: 24px; font-weight: 700; }
-        .hero-sub { font-size: 14px; opacity: 0.92; margin-top: 6px; }
+        .page-head { margin: 4px 0 18px; }
+        .page-title { font-size: 24px; font-weight: 700; }
+        .page-sub { font-size: 13px; color: #86868b; margin-top: 5px; }
         .toc { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 22px; }
         .toc a { font-size: 13px; font-weight: 600; color: #0071e3; text-decoration: none; background: #eaf3ff; padding: 7px 14px; border-radius: 20px; }
         .toc a:hover { background: #d6e9ff; }
@@ -57,7 +57,7 @@
                 <span class="sep">|</span>
                 <a href="/annotate">标注工作台</a>
                 <span class="sep">|</span>
-                <a href="/analysis">可视化分析</a>
+                <a href="/analysis">数据分析</a>
                 <span class="sep">|</span>
                 <a href="/data">数据管理</a>
                 <span class="sep">|</span>
@@ -67,9 +67,9 @@
     </div>
 
     <div class="container">
-        <div class="hero">
-            <div class="hero-title">📖 标注知识与规范</div>
-            <div class="hero-sub">AI 搜索边界定义 · 评测打分标准 · 执行安排 · 测评集处理</div>
+        <div class="page-head">
+            <div class="page-title">📖 标注知识与规范</div>
+            <div class="page-sub">AI 搜索边界定义 · 评测打分标准 · 执行安排 · 测评集处理</div>
         </div>
 
         <div class="toc">
@@ -154,13 +154,10 @@
                 </thead>
                 <tbody>
                     <tr><td class="center">1</td><td>相关性</td><td>返回的所有地图跟 query 意图对不对</td><td class="guide"><b>5</b>=基本完全匹配，<b>3</b>=部分匹配部分无关，<b>1</b>=完全无关</td></tr>
-                    <tr><td class="center">2</td><td>准确性</td><td>是否准确匹配到理想地图，返回内容是否存在明显错误（逻辑错误）</td><td class="guide"><b>5</b>=完全匹配到理想地图（且无逻辑错误），<b>3</b>=相关但不是最佳，<b>1</b>=完全不理想（甚至理解错误反向推荐）</td></tr>
-                    <tr><td class="center">3</td><td>排序合理性</td><td>排在前面的是不是比后面的更好</td><td class="guide"><b>5</b>=排序完美，<b>3</b>=前 3 有不该出现的，<b>1</b>=排序混乱 / 颠倒</td></tr>
-                    <tr><td class="center">4</td><td>质量门槛</td><td>推荐的地图本身质量如何（点赞数 / 完成率等）</td><td class="guide"><b>5</b>=都是精品，<b>3</b>=混入了低质量图，<b>1</b>=大量垃圾图</td></tr>
-                    <tr><td class="center">5</td><td>个性化（多样性）</td><td>结果是否丰富多样</td><td class="guide"><b>5</b>=非常丰富（3 种不同类型），<b>3</b>=大致丰富（2 种类型），<b>1</b>=完全同质化</td></tr>
-                    <tr><td class="center">6</td><td>文案 / 推荐语</td><td>若有 AI 生成文案，读起来是否自然有帮助</td><td class="guide"><b>5</b>=有信息量且自然，<b>3</b>=正确但无聊，<b>1</b>=AI 味重或有误导</td></tr>
-                    <tr><td class="center">7</td><td>与文本搜相比</td><td>AI 搜效果是否优于文本搜</td><td class="guide"><b>-1</b>=不如文本搜，<b>0</b>=与文本搜差不多，<b>1</b>=优于文本搜</td></tr>
-                    <tr><td class="center">8</td><td>是否推出目标地图</td><td>是否推出目标地图</td><td class="guide"><b>0</b>=未推出，<b>1</b>=推出，<b>空缺</b>=不清楚 / 不确定</td></tr>
+                    <tr><td class="center">2</td><td>排序合理性</td><td>排在前面的是不是比后面的更好</td><td class="guide"><b>5</b>=排序完美，<b>3</b>=前 3 有不该出现的，<b>1</b>=排序混乱 / 颠倒</td></tr>
+                    <tr><td class="center">3</td><td>质量门槛</td><td>推荐的地图本身质量如何（点赞数 / 完成率等）</td><td class="guide"><b>5</b>=都是精品，<b>3</b>=混入了低质量图，<b>1</b>=大量垃圾图</td></tr>
+                    <tr><td class="center">4</td><td>与文本搜相比</td><td>AI 搜效果是否优于文本搜</td><td class="guide"><b>-1</b>=不如文本搜，<b>0</b>=与文本搜差不多，<b>1</b>=优于文本搜</td></tr>
+                    <tr><td class="center">5</td><td>是否推出目标地图</td><td>是否推出目标地图</td><td class="guide"><b>0</b>=未推出，<b>1</b>=推出，<b>空缺</b>=不清楚 / 不确定</td></tr>
                 </tbody>
             </table>
 
@@ -230,11 +227,6 @@
             <div class="sec-title" id="s4">4、测评集处理</div>
             <p class="note">按照 query 长短和搜索频率占比进行抽样，已筛选出 <b>500 个词</b>。基于筛选出的 500 个词，手动打标归类（或写提示词让 AI 打标），全面覆盖每个类别。</p>
             <p class="note">关注 query 搜索次数，保持 <b>60% 具有代表性</b>；若达不到 500 词可适当放宽限制。</p>
-            <div class="sub-title">开放思考</div>
-            <p class="note">· AI 搜索是否包含其他生态：搜房间 / 开店信息？搜更新信息？搜地图评选结果？搜活动信息（工匠大赛）？搜评论？工坊更新信息？根据用户画像推荐？搜游戏内任务名、人物名（需自建数据）？新闻？</p>
-            <p class="note">· 或许可以增加一点 AI 的 p 值（回答更自由，增加一些 AI 的思考）；蛋壳里的内容？</p>
-            <p class="note">· 蛋仔用户的搜索需求（痛点、痒点）是什么，想搜到什么样的内容？</p>
-            <p class="note">· 蛋仔对比其他平台的优势、短板，特色在哪里？</p>
         </div>
     </div>
 </body>
