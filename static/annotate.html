@@ -541,6 +541,14 @@ createApp({
                 ws = new WebSocket(`${proto}://${location.host}/ws`);
                 ws.onmessage = (ev) => {
                     let m; try { m = JSON.parse(ev.data); } catch { return; }
+                    // AI 搜 F10 结束 → 自动跳到下一条（文本搜 F10 不发此信号，页面不动）
+                    if (m.type === 'advance') {
+                        if (m.query_id != null) {
+                            const p = list.value.findIndex(q => q.id === m.query_id);
+                            if (p >= 0 && p < list.value.length - 1) { idx.value = p + 1; dimIdx.value = 0; }
+                        } else { next(); }
+                        return;
+                    }
                     if (m.type !== 'screenshot_update' && m.type !== 'screenshot_delete') return;
                     const i = queries.value.findIndex(q => q.id === m.query_id);
                     if (i < 0) return;
