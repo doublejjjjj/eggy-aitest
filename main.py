@@ -3,6 +3,7 @@
 """
 
 import os
+import sys
 import csv
 import json
 import time
@@ -2168,7 +2169,7 @@ async def start_test(body: dict = {}):
             env = os.environ.copy()
             env["TEST_SET_ID"] = str(test_set_id)
             proc = subprocess.Popen(
-                ["python", "-u", script_path],
+                [sys.executable or "python3", "-u", script_path],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 cwd=os.path.dirname(APP_DIR), text=True, encoding="utf-8", errors="replace",
                 env=env
