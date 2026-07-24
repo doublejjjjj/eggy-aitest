@@ -414,6 +414,7 @@ createApp({
                 }
             } finally { uploading.value = null; e.target.value = ''; }
         };
+        const prev = () => { if (idx.value > 0) { idx.value--; dimIdx.value = 0; } };
         const next = () => { if (idx.value < list.value.length - 1) { idx.value++; dimIdx.value = 0; } };
         const doJump = () => {
             const t = jump.value.trim().toLowerCase();
