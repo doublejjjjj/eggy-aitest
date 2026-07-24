@@ -2344,10 +2344,10 @@ async def agent_status():
 async def report_progress(body: dict):
     """本地 Agent 通过 HTTP 回报进度（WS 回传的备用通道）。"""
     _handle_agent_message(body)
-    # AI 搜结束（F10）时通知前端自动跳到下一条
-    if body.get("type") == "advance":
+    # goto=网页跳到指定 query（当前打分对象）；advance=跳到下一条
+    if body.get("type") in ("advance", "goto"):
         await manager.broadcast({
-            "type": "advance",
+            "type": body["type"],
             "query_id": body.get("query_id"),
         })
     return {"ok": True}

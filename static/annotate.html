@@ -541,7 +541,15 @@ createApp({
                 ws = new WebSocket(`${proto}://${location.host}/ws`);
                 ws.onmessage = (ev) => {
                     let m; try { m = JSON.parse(ev.data); } catch { return; }
-                    // AI 搜 F10 结束 → 自动跳到下一条（文本搜 F10 不发此信号，页面不动）
+                    // goto：网页跳到 Agent 当前正在采集/待打分的这条
+                    if (m.type === 'goto') {
+                        if (m.query_id != null) {
+                            const p = list.value.findIndex(q => q.id === m.query_id);
+                            if (p >= 0) { idx.value = p; dimIdx.value = 0; }
+                        }
+                        return;
+                    }
+                    // advance：跳到下一条（兼容旧信号）
                     if (m.type === 'advance') {
                         if (m.query_id != null) {
                             const p = list.value.findIndex(q => q.id === m.query_id);
