@@ -519,7 +519,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>#</th>
+                    <th>编号</th>
                     <th v-for="col in visibleColumns" :key="col.field" :style="col.minWidth ? {minWidth: col.minWidth} : {}"
                         :class="{'search-result-cell': col.field === 'search_result'}">
                         <div class="th-content">
@@ -545,7 +545,7 @@
             </thead>
             <tbody>
                 <tr v-for="(q, idx) in filteredQueries" :key="q.id">
-                    <td><span class="row-num">{{ idx + 1 }}</span></td>
+                    <td><span class="row-num" :title="'数据集内第 ' + (idx+1) + ' 条'">{{ q.id }}</span></td>
                     <template v-for="col in visibleColumns" :key="col.field">
                         <!-- Query text -->
                         <td v-if="col.field === 'query'"><span class="query-text" :title="q.query">{{ q.query }}</span></td>
@@ -832,7 +832,7 @@ createApp({
             { field: 'original_group', label: '原始分组', visible: true },
             { field: 'expected_result', label: '期望搜索结果', visible: true, editable: 'text' },
             { field: 'expected_screenshot', label: '期望结果截图', visible: true, editable: 'image' },
-            { field: 'search_result', label: '搜索结果', visible: true },
+            { field: 'search_result', label: '搜索结果说明', visible: true },
             { field: 'text_screenshot_url', label: '文本搜截图', visible: true },
             { field: 'ai_screenshot_url', label: 'AI搜截图', visible: true },
             { field: 'relevance', label: '相关性', visible: true, editable: 'number' },
