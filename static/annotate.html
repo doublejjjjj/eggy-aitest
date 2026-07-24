@@ -205,7 +205,11 @@
                     </figure>
                     <label v-if="!locked" class="shot-add">
                         <span>{{ uploading==='ai' ? '上传中…' : '＋ 加AI截图' }}</span>
-                        <input type="file" accept="image/*" style="display:none" @change="addAiShot($event)" />
+                        <input type="file" accept="image/*" style="display:none" @change="addShot($event,'ai')" />
+                    </label>
+                    <label v-if="!locked" class="shot-add">
+                        <span>{{ uploading==='text' ? '上传中…' : '＋ 加文本截图' }}</span>
+                        <input type="file" accept="image/*" style="display:none" @change="addShot($event,'text')" />
                     </label>
                     <div v-if="!galleryOf(cur).length && locked" class="no-img">暂无截图</div>
                 </div>
@@ -398,19 +402,24 @@ createApp({
                 }
             } else if (res.status === 423) { blocked.value = true; setTimeout(() => blocked.value = false, 1800); }
         };
-        const addAiShot = async (e) => {
+        const addShot = async (e, type) => {
             const f = e.target.files[0];
             if (!f || !cur.value) return;
-            uploading.value = 'ai';
+            const t = type === 'text' ? 'text' : 'ai';
+            uploading.value = t;
             try {
                 const fd = new FormData();
                 fd.append('file', f);
-                const resp = await fetch(`/api/upload-screenshot?query_id=${cur.value.id}&type=ai`, { method: 'POST', body: fd });
+                const resp = await fetch(`/api/upload-screenshot?query_id=${cur.value.id}&type=${t}`, { method: 'POST', body: fd });
                 const d = await resp.json();
                 const i = queries.value.findIndex(q => q.id === cur.value.id);
-                if (i >= 0 && d.ai_screenshots) {
-                    queries.value[i].ai_screenshots = d.ai_screenshots;
-                    queries.value[i].ai_screenshot_url = d.ai_screenshots[0];
+                if (i >= 0) {
+                    if (t === 'text') {
+                        queries.value[i].text_screenshot_url = d.url;
+                    } else if (d.ai_screenshots) {
+                        queries.value[i].ai_screenshots = d.ai_screenshots;
+                        queries.value[i].ai_screenshot_url = d.ai_screenshots[0];
+                    }
                 }
             } finally { uploading.value = null; e.target.value = ''; }
         };
@@ -601,7 +610,7 @@ createApp({
 
         onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); connectWS(); });
 
-        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, deleteShot, addAiShot, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
+        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, deleteShot, addShot, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
     }
 }).mount('#app');
 </script>
