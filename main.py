@@ -381,6 +381,9 @@ def init_db():
         conn.execute("ALTER TABLE queries ADD COLUMN expected_screenshot TEXT")
     if "expected_result" not in existing:
         conn.execute("ALTER TABLE queries ADD COLUMN expected_result TEXT")
+    # AI 搜多张截图（JSON 数组）；ai_screenshot_url 保留为首图，兼容旧页面缩略图
+    if "ai_screenshots" not in existing:
+        conn.execute("ALTER TABLE queries ADD COLUMN ai_screenshots TEXT")
     # test_sets 标注状态：labeling(标注中) / locked(已锁定只读)
     ts_cols = {row[1] for row in conn.execute("PRAGMA table_info(test_sets)").fetchall()}
     if "status" not in ts_cols:
@@ -406,6 +409,25 @@ async def get_db():
     db = await aiosqlite.connect(DB_PATH)
     db.row_factory = aiosqlite.Row
     return db
+
+
+def _serialize_query(row):
+    """把 DB 行转 dict，并把 ai_screenshots(JSON) 解析成列表。
+    旧数据无列表时用 ai_screenshot_url 兜底。"""
+    q = dict(row)
+    lst = []
+    raw = q.get("ai_screenshots")
+    if raw:
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                lst = [u for u in parsed if u]
+        except Exception:
+            lst = []
+    if not lst and q.get("ai_screenshot_url"):
+        lst = [q["ai_screenshot_url"]]
+    q["ai_screenshots"] = lst
+    return q
 
 
 # ============================================================
@@ -624,7 +646,7 @@ async def get_queries(test_set_id: int = QueryParam(default=None)):
         cursor = await db.execute("SELECT * FROM queries ORDER BY id")
     rows = await cursor.fetchall()
     await db.close()
-    return [dict(row) for row in rows]
+    return [_serialize_query(row) for row in rows]
 
 
 class QueryUpdate(BaseModel):
@@ -676,7 +698,7 @@ async def update_query(query_id: int, data: QueryUpdate):
 
     if row is None:
         raise HTTPException(404, "Query not found")
-    return dict(row)
+    return _serialize_query(row)
 
 
 @app.post("/api/upload-screenshot")
@@ -687,7 +709,7 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
     db = await get_db()
     await _ensure_unlocked(db, query_id)
 
-    filename = f"q{query_id}_{type}_{int(datetime.now().timestamp())}.jpg"
+    filename = f"q{query_id}_{type}_{int(datetime.now().timestamp()*1000)}.jpg"
     filepath = os.path.join(SCREENSHOTS_DIR, filename)
 
     content = await file.read()
@@ -695,12 +717,36 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
         f.write(content)
 
     url = f"/static/screenshots/{filename}"
-    col = "text_screenshot_url" if type == "text" else "ai_screenshot_url"
+    now = datetime.now().isoformat()
+    ai_list = None
 
-    await db.execute(
-        f"UPDATE queries SET {col} = ?, updated_at = ? WHERE id = ?",
-        [url, datetime.now().isoformat(), query_id]
-    )
+    if type == "text":
+        await db.execute(
+            "UPDATE queries SET text_screenshot_url = ?, updated_at = ? WHERE id = ?",
+            [url, now, query_id]
+        )
+    else:
+        # AI 搜：追加到多图列表，ai_screenshot_url 存首图（兼容旧缩略图）
+        row = await (await db.execute(
+            "SELECT ai_screenshots, ai_screenshot_url FROM queries WHERE id = ?", [query_id]
+        )).fetchone()
+        ai_list = []
+        if row is not None:
+            raw = row["ai_screenshots"]
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        ai_list = [u for u in parsed if u]
+                except Exception:
+                    ai_list = []
+            if not ai_list and row["ai_screenshot_url"]:
+                ai_list = [row["ai_screenshot_url"]]
+        ai_list.append(url)
+        await db.execute(
+            "UPDATE queries SET ai_screenshots = ?, ai_screenshot_url = ?, updated_at = ? WHERE id = ?",
+            [json.dumps(ai_list, ensure_ascii=False), ai_list[0], now, query_id]
+        )
     await db.commit()
     await db.close()
 
@@ -708,10 +754,73 @@ async def upload_screenshot(query_id: int, type: str, file: UploadFile = File(..
         "type": "screenshot_update",
         "query_id": query_id,
         "screenshot_type": type,
-        "url": url
+        "url": url,
+        "ai_screenshots": ai_list,
     })
 
-    return {"url": url, "query_id": query_id}
+    return {"url": url, "query_id": query_id, "ai_screenshots": ai_list}
+
+
+@app.post("/api/delete-screenshot")
+async def delete_screenshot(body: dict):
+    """删除某条 query 的一张截图。body: {query_id, type, url}。
+    type=ai 时从多图列表移除该 url；type=text 时清空文本搜截图。"""
+    query_id = body.get("query_id")
+    type = body.get("type")
+    url = body.get("url")
+    if query_id is None or type not in ("text", "ai"):
+        raise HTTPException(400, "参数不合法")
+
+    db = await get_db()
+    await _ensure_unlocked(db, query_id)
+    now = datetime.now().isoformat()
+    ai_list = None
+
+    if type == "text":
+        await db.execute(
+            "UPDATE queries SET text_screenshot_url = NULL, updated_at = ? WHERE id = ?",
+            [now, query_id]
+        )
+    else:
+        row = await (await db.execute(
+            "SELECT ai_screenshots, ai_screenshot_url FROM queries WHERE id = ?", [query_id]
+        )).fetchone()
+        ai_list = []
+        if row is not None:
+            raw = row["ai_screenshots"]
+            if raw:
+                try:
+                    parsed = json.loads(raw)
+                    if isinstance(parsed, list):
+                        ai_list = [u for u in parsed if u]
+                except Exception:
+                    ai_list = []
+            if not ai_list and row["ai_screenshot_url"]:
+                ai_list = [row["ai_screenshot_url"]]
+        ai_list = [u for u in ai_list if u != url]
+        first = ai_list[0] if ai_list else None
+        await db.execute(
+            "UPDATE queries SET ai_screenshots = ?, ai_screenshot_url = ?, updated_at = ? WHERE id = ?",
+            [json.dumps(ai_list, ensure_ascii=False), first, now, query_id]
+        )
+    await db.commit()
+    await db.close()
+
+    # 尽力删除磁盘文件
+    if url and url.startswith("/static/screenshots/"):
+        try:
+            os.remove(os.path.join(SCREENSHOTS_DIR, os.path.basename(url)))
+        except Exception:
+            pass
+
+    await manager.broadcast({
+        "type": "screenshot_delete",
+        "query_id": query_id,
+        "screenshot_type": type,
+        "url": url,
+        "ai_screenshots": ai_list,
+    })
+    return {"ok": True, "ai_screenshots": ai_list}
 
 
 @app.post("/api/upload-field-image")

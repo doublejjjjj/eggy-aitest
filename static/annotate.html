@@ -65,9 +65,13 @@
         .meta-grid { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; font-size: 14.5px; margin-bottom: 16px; }
         .meta-grid .k { color: #86868b; } .meta-grid .v { font-weight: 500; }
         .gallery { display: flex; flex-wrap: wrap; gap: 10px; }
-        .gallery figure { width: calc(50% - 5px); }
+        .gallery figure { width: calc(50% - 5px); position: relative; }
         .gallery img { width: 100%; border-radius: 10px; border: 1px solid #e8e8ed; cursor: zoom-in; display: block; }
         .gallery figcaption { font-size: 12px; color: #86868b; margin-top: 4px; text-align: center; }
+        .shot-del { position: absolute; top: 6px; right: 6px; width: 24px; height: 24px; border: none; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; line-height: 22px; cursor: pointer; padding: 0; }
+        .shot-del:hover { background: #d1352b; }
+        .shot-add { width: calc(50% - 5px); min-height: 88px; display: flex; align-items: center; justify-content: center; border: 1.5px dashed #c8c8cf; border-radius: 10px; font-size: 13px; color: #0071e3; cursor: pointer; background: #fafbff; }
+        .shot-add:hover { border-color: #0071e3; background: #f0f7ff; }
         .no-img { color: #b0b0b5; font-style: italic; font-size: 14px; }
 
         .dim { margin-bottom: 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid transparent; }
@@ -160,7 +164,7 @@
             <div class="cap-log">
                 <div v-for="(l,i) in capProgress" :key="i">{{ l }}</div>
             </div>
-            <div class="cap-tip">脚本在<b>本地开着游戏的电脑</b>上由 Agent 执行（需 <code>start_agent.bat</code> 已启动、游戏在前台、坐标匹配）。截图自动上传服务器。F9 截图 / F10 跳过。</div>
+            <div class="cap-tip">脚本在<b>本地开着游戏的电脑</b>上由 Agent 执行（需 <code>start_agent.bat</code> 已启动、游戏在前台、坐标匹配）。截图自动上传服务器。文本搜：F9 截图 / F10 跳过；AI搜：F9 可多次截图 / F10 结束当前条。</div>
             <div class="cap-actions">
                 <button v-if="capRunning" class="cap-stop" @click="stopCapture">■ 停止</button>
                 <button v-else class="cap-start" @click="startCapture">▶ 开始标注</button>
@@ -193,13 +197,18 @@
                     <span class="k">频率层级</span><span class="v">{{ cur.frequency_level || '-' }}</span>
                 </div>
                 <div class="col-title">搜索结果图集</div>
-                <div v-if="galleryOf(cur).length" class="gallery">
+                <div class="gallery">
                     <figure v-for="(g,i) in galleryOf(cur)" :key="i">
+                        <button v-if="g.removable && !locked" class="shot-del" @click.stop="deleteShot(g)" title="删除这张">×</button>
                         <img :src="g.url" @click="zoom(g.url)" />
                         <figcaption>{{ g.label }}</figcaption>
                     </figure>
+                    <label v-if="!locked" class="shot-add">
+                        <span>{{ uploading==='ai' ? '上传中…' : '＋ 加AI截图' }}</span>
+                        <input type="file" accept="image/*" style="display:none" @change="addAiShot($event)" />
+                    </label>
+                    <div v-if="!galleryOf(cur).length && locked" class="no-img">暂无截图</div>
                 </div>
-                <div v-else class="no-img">暂无截图（可先采集，或跑脚本上传）</div>
             </div>
 
             <!-- 中：评分 -->
@@ -319,12 +328,13 @@ createApp({
         const galleryOf = (q) => {
             const g = [];
             const isAi = (label) => /ai\s*搜/i.test(label || '');
-            // 1) AI 搜主图
-            if (q.ai_screenshot_url) g.push({ url: q.ai_screenshot_url, label: 'AI搜结果' });
+            // 1) AI 搜多图（支持增删）
+            const aiShots = (q.ai_screenshots && q.ai_screenshots.length) ? q.ai_screenshots : (q.ai_screenshot_url ? [q.ai_screenshot_url] : []);
+            aiShots.forEach((url, i) => g.push({ url, label: aiShots.length > 1 ? `AI搜结果 ${i+1}` : 'AI搜结果', type: 'ai', removable: true }));
             // 2) 紧接着 AI 类自定义截图（如 AI搜截图2）
             imageFields.value.forEach(f => { if (isAi(f.label) && q[f.field]) g.push({ url: q[f.field], label: f.label }); });
             // 3) 文本搜结果
-            if (q.text_screenshot_url) g.push({ url: q.text_screenshot_url, label: '文本搜结果' });
+            if (q.text_screenshot_url) g.push({ url: q.text_screenshot_url, label: '文本搜结果', type: 'text', removable: true });
             // 4) 其它自定义图片列
             imageFields.value.forEach(f => { if (!isAi(f.label) && q[f.field]) g.push({ url: q[f.field], label: f.label }); });
             return g;
@@ -367,8 +377,43 @@ createApp({
                 if (data.url) await save(cur.value.id, { [field]: data.url });
             } finally { uploading.value = null; e.target.value = ''; }
         };
-
-        const prev = () => { if (idx.value > 0) { idx.value--; dimIdx.value = 0; } };
+        const deleteShot = async (g) => {
+            if (locked.value) { blocked.value = true; setTimeout(() => blocked.value = false, 1800); return; }
+            if (!cur.value) return;
+            const id = cur.value.id;
+            const t = g.type || 'ai';
+            const res = await fetch('/api/delete-screenshot', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query_id: id, type: t, url: g.url })
+            });
+            if (res.ok) {
+                const d = await res.json();
+                const i = queries.value.findIndex(q => q.id === id);
+                if (i >= 0) {
+                    if (t === 'text') queries.value[i].text_screenshot_url = null;
+                    else {
+                        queries.value[i].ai_screenshots = d.ai_screenshots || [];
+                        queries.value[i].ai_screenshot_url = (d.ai_screenshots && d.ai_screenshots[0]) || null;
+                    }
+                }
+            } else if (res.status === 423) { blocked.value = true; setTimeout(() => blocked.value = false, 1800); }
+        };
+        const addAiShot = async (e) => {
+            const f = e.target.files[0];
+            if (!f || !cur.value) return;
+            uploading.value = 'ai';
+            try {
+                const fd = new FormData();
+                fd.append('file', f);
+                const resp = await fetch(`/api/upload-screenshot?query_id=${cur.value.id}&type=ai`, { method: 'POST', body: fd });
+                const d = await resp.json();
+                const i = queries.value.findIndex(q => q.id === cur.value.id);
+                if (i >= 0 && d.ai_screenshots) {
+                    queries.value[i].ai_screenshots = d.ai_screenshots;
+                    queries.value[i].ai_screenshot_url = d.ai_screenshots[0];
+                }
+            } finally { uploading.value = null; e.target.value = ''; }
+        };
         const next = () => { if (idx.value < list.value.length - 1) { idx.value++; dimIdx.value = 0; } };
         const doJump = () => {
             const t = jump.value.trim().toLowerCase();
@@ -403,11 +448,17 @@ createApp({
         const pollCap = async () => {
             try {
                 const s = await (await fetch('/api/test/status')).json();
+                const wasRunning = capRunning.value;
                 capRunning.value = !!s.running;
                 capStatus.value = s.status || 'idle';
                 capProgress.value = (s.progress || []).slice(-8);
                 capCur.value = s.current || 0;
                 capTot.value = s.total || 0;
+                // 采集结束后刷新数据，让 Agent 上传的截图显示出来（保留当前浏览位置）
+                if (wasRunning && !capRunning.value) {
+                    const data = await (await fetch(`/api/queries?test_set_id=${activeTestSet.value}`)).json();
+                    queries.value = data;
+                }
             } catch {}
             try {
                 const a = await (await fetch('/api/agent/status')).json();
@@ -505,7 +556,7 @@ createApp({
 
         onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); });
 
-        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
+        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, deleteShot, addAiShot, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
     }
 }).mount('#app');
 </script>
