@@ -137,7 +137,8 @@
             <button class="mini-search" @click="doJump" title="搜索"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg></button>
             <label class="toggle"><input type="checkbox" v-model="onlyUnscored" /> 只看未标注</label>
             <span v-if="locked" class="lock-badge">🔒 已锁定（只读）</span>
-            <button v-if="!capRunning" class="cap-btn" @click="startCapture">▶ 开始标注</button>
+            <span v-if="!capRunning && !agentOnline" style="font-size:12px;color:#d1352b;font-weight:600">● Agent 未连接</span>
+            <button v-if="!capRunning" class="cap-btn" @click="startCapture" :disabled="!agentOnline" :title="agentOnline ? '' : '本地 Agent 未连接，请先在本机启动 start_agent.bat'">▶ 开始标注</button>
             <button v-if="capRunning" class="cap-btn running" @click="capOpen=true"><span class="cap-dot"></span>标注进行中</button>
             <button v-if="capRunning" class="cap-pause" @click="stopCapture">⏸ 中断</button>
             <button v-if="locked" class="cap-unlock" @click="unlockEdit">🔓 解锁编辑</button>
@@ -159,7 +160,7 @@
             <div class="cap-log">
                 <div v-for="(l,i) in capProgress" :key="i">{{ l }}</div>
             </div>
-            <div class="cap-tip">脚本在<b>运行服务器的这台电脑</b>上操作游戏（需已打开游戏、坐标匹配）。F9 截图 / F10 跳过。</div>
+            <div class="cap-tip">脚本在<b>本地开着游戏的电脑</b>上由 Agent 执行（需 <code>start_agent.bat</code> 已启动、游戏在前台、坐标匹配）。截图自动上传服务器。F9 截图 / F10 跳过。</div>
             <div class="cap-actions">
                 <button v-if="capRunning" class="cap-stop" @click="stopCapture">■ 停止</button>
                 <button v-else class="cap-start" @click="startCapture">▶ 开始标注</button>
@@ -396,6 +397,7 @@ createApp({
         const capCur = ref(0);
         const capTot = ref(0);
         const capOpen = ref(false);
+        const agentOnline = ref(false);
         let capTimer = null;
 
         const pollCap = async () => {
@@ -407,11 +409,16 @@ createApp({
                 capCur.value = s.current || 0;
                 capTot.value = s.total || 0;
             } catch {}
+            try {
+                const a = await (await fetch('/api/agent/status')).json();
+                agentOnline.value = !!a.online;
+            } catch {}
         };
         const startCapture = async () => {
             if (capRunning.value) { capOpen.value = true; return; }
+            if (!agentOnline.value) { capOpen.value = true; capProgress.value = ['本地 Agent 未连接，请先在本机启动 start_agent.bat']; return; }
             capOpen.value = true;
-            capProgress.value = ['正在启动脚本，请切到游戏窗口…'];
+            capProgress.value = ['已下发指令，等待本地 Agent 执行…'];
             try {
                 const r = await fetch('/api/test/start', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -498,7 +505,7 @@ createApp({
 
         onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); });
 
-        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
+        return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
     }
 }).mount('#app');
 </script>

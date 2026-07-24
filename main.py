@@ -434,6 +434,72 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+# ============================================================
+# 远程 Agent 通道（本地 Agent 通过 WS 接收「开始标注」指令）
+# ============================================================
+
+# 本地 Agent 连接暗号；服务器用环境变量 AGENT_TOKEN 配置，须与本地 config 一致
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "eggy-agent")
+
+
+class AgentManager:
+    def __init__(self):
+        self.agents: List[WebSocket] = []
+
+    async def connect(self, ws: WebSocket):
+        await ws.accept()
+        self.agents.append(ws)
+
+    def disconnect(self, ws: WebSocket):
+        if ws in self.agents:
+            self.agents.remove(ws)
+
+    @property
+    def online(self):
+        return len(self.agents) > 0
+
+    async def dispatch(self, message: dict):
+        """向所有在线 Agent 推送指令，返回成功发送数。"""
+        sent = 0
+        for ws in self.agents[:]:
+            try:
+                await ws.send_json(message)
+                sent += 1
+            except Exception:
+                self.disconnect(ws)
+        return sent
+
+
+agent_manager = AgentManager()
+
+
+def _handle_agent_message(data: dict):
+    """处理 Agent 回传的进度/状态消息，更新 test_state。"""
+    t = data.get("type")
+    if t == "progress":
+        line = data.get("line")
+        if line:
+            test_state["progress"].append(line)
+            if len(test_state["progress"]) > 200:
+                test_state["progress"] = test_state["progress"][-200:]
+        if data.get("current") is not None:
+            test_state["current"] = data["current"]
+        if data.get("total") is not None:
+            test_state["total"] = data["total"]
+        test_state["status"] = "running"
+        test_state["running"] = True
+    elif t == "done":
+        if data.get("line"):
+            test_state["progress"].append(data["line"])
+        test_state["status"] = "done"
+        test_state["running"] = False
+    elif t == "error":
+        if data.get("line"):
+            test_state["progress"].append(data["line"])
+        test_state["status"] = "error"
+        test_state["running"] = False
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
     await manager.connect(ws)
@@ -442,6 +508,26 @@ async def websocket_endpoint(ws: WebSocket):
             await ws.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(ws)
+
+
+@app.websocket("/ws/agent")
+async def agent_endpoint(ws: WebSocket):
+    # 连接鉴权：token 不符直接拒绝
+    if ws.query_params.get("token") != AGENT_TOKEN:
+        await ws.close(code=4001)
+        return
+    await agent_manager.connect(ws)
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                _handle_agent_message(json.loads(raw))
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        agent_manager.disconnect(ws)
+    except Exception:
+        agent_manager.disconnect(ws)
 
 
 # ============================================================
@@ -2139,16 +2225,27 @@ async def get_test_status():
     }
 
 
+@app.get("/api/agent/status")
+async def agent_status():
+    """本地 Agent 是否在线，供前端决定「开始标注」是否可点。"""
+    return {"online": agent_manager.online, "count": len(agent_manager.agents)}
+
+
+@app.post("/api/test/progress")
+async def report_progress(body: dict):
+    """本地 Agent 通过 HTTP 回报进度（WS 回传的备用通道）。"""
+    _handle_agent_message(body)
+    return {"ok": True}
+
+
 @app.post("/api/test/start")
 async def start_test(body: dict = {}):
     if test_state["running"]:
         raise HTTPException(400, "测试正在运行中")
+    if not agent_manager.online:
+        raise HTTPException(409, "本地 Agent 未连接，请先在本地启动 Agent")
 
-    # Allow overriding breakpoint
     bp = body.get("breakpoint")
-    if bp is not None:
-        write_breakpoint(int(bp))
-
     test_set_id = body.get("test_set_id", 1)
 
     # 开始标注即解锁该测试集
@@ -2158,59 +2255,28 @@ async def start_test(body: dict = {}):
     await db.close()
 
     test_state["running"] = True
-    test_state["progress"] = []
+    test_state["progress"] = ["已下发指令，等待本地 Agent 执行…"]
     test_state["status"] = "starting"
     test_state["current"] = 0
     test_state["total"] = 0
+    test_state["pid"] = None
 
-    def run_test():
-        try:
-            script_path = os.path.join(os.path.dirname(APP_DIR), "search_auto_test.py")
-            env = os.environ.copy()
-            env["TEST_SET_ID"] = str(test_set_id)
-            proc = subprocess.Popen(
-                [sys.executable or "python3", "-u", script_path],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                cwd=os.path.dirname(APP_DIR), text=True, encoding="utf-8", errors="replace",
-                env=env
-            )
-            test_state["pid"] = proc.pid
-            for line in proc.stdout:
-                line = line.strip()
-                if line:
-                    test_state["progress"].append(line)
-                    # Keep last 200 lines
-                    if len(test_state["progress"]) > 200:
-                        test_state["progress"] = test_state["progress"][-200:]
-                    if line.startswith("[") and "/" in line.split("]")[0]:
-                        try:
-                            parts = line.split("]")[0].strip("[")
-                            cur, tot = parts.split("/")
-                            test_state["current"] = int(cur)
-                            test_state["total"] = int(tot)
-                        except:
-                            pass
-                    test_state["status"] = "running"
-            proc.wait()
-            test_state["status"] = "done" if proc.returncode == 0 else "error"
-        except Exception as e:
-            test_state["progress"].append(f"启动失败: {e}")
-            test_state["status"] = "error"
-        finally:
-            test_state["running"] = False
-            test_state["pid"] = None
-
-    threading.Thread(target=run_test, daemon=True).start()
-    return {"ok": True, "message": "测试已启动"}
+    cmd = {
+        "type": "start_test",
+        "test_set_id": test_set_id,
+        "breakpoint": int(bp) if bp is not None else None,
+    }
+    sent = await agent_manager.dispatch(cmd)
+    if sent == 0:
+        test_state["running"] = False
+        test_state["status"] = "error"
+        raise HTTPException(409, "本地 Agent 未连接")
+    return {"ok": True, "dispatched": True, "agents": sent}
 
 
 @app.post("/api/test/stop")
 async def stop_test():
-    if test_state["pid"]:
-        try:
-            os.kill(test_state["pid"], signal.SIGTERM)
-        except:
-            pass
+    await agent_manager.dispatch({"type": "stop"})
     test_state["running"] = False
     test_state["status"] = "stopped"
     test_state["pid"] = None
