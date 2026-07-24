@@ -533,6 +533,34 @@ createApp({
         watch(activeTestSet, loadData);
         watch(onlyUnscored, () => { idx.value = 0; dimIdx.value = 0; });
 
+        // ===== WebSocket 实时更新截图 =====
+        let ws = null;
+        const connectWS = () => {
+            try {
+                const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+                ws = new WebSocket(`${proto}://${location.host}/ws`);
+                ws.onmessage = (ev) => {
+                    let m; try { m = JSON.parse(ev.data); } catch { return; }
+                    if (m.type !== 'screenshot_update' && m.type !== 'screenshot_delete') return;
+                    const i = queries.value.findIndex(q => q.id === m.query_id);
+                    if (i < 0) return;
+                    if (m.screenshot_type === 'text') {
+                        queries.value[i].text_screenshot_url = m.type === 'screenshot_delete' ? null : m.url;
+                    } else if (Array.isArray(m.ai_screenshots)) {
+                        queries.value[i].ai_screenshots = m.ai_screenshots;
+                        queries.value[i].ai_screenshot_url = m.ai_screenshots[0] || null;
+                    } else if (m.type === 'screenshot_update' && m.url) {
+                        const arr = (queries.value[i].ai_screenshots || []).slice();
+                        arr.push(m.url);
+                        queries.value[i].ai_screenshots = arr;
+                        queries.value[i].ai_screenshot_url = arr[0];
+                    }
+                };
+                ws.onclose = () => { setTimeout(connectWS, 3000); };
+                ws.onerror = () => { try { ws.close(); } catch {} };
+            } catch {}
+        };
+
         const onKey = (e) => {
             if (modalImage.value) {
                 if (e.key === 'ArrowLeft') mnav(-1);
@@ -555,7 +583,7 @@ createApp({
             else if (e.key.toLowerCase() === 'n') setTarget(0);
         };
 
-        onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); });
+        onMounted(async () => { await loadTestSets(); await loadData(); window.addEventListener('keydown', onKey); pollCap(); capTimer = setInterval(pollCap, 2000); connectWS(); });
 
         return { testSets, activeTestSet, queries, idx, dimIdx, jump, onlyUnscored, flash, uploading, list, cur, scoreDims, targetField, scoredCount, scoredPct, aiScore, galleryOf, setScore, setVs, setTarget, saveField, uploadImg, deleteShot, addAiShot, prev, next, doJump, zoom, mnav, modalImage, modalImages, modalIdx, capRunning, capStatus, capProgress, capCur, capTot, capOpen, agentOnline, startCapture, stopCapture, finishCapture, unlockEdit, tsStatus, locked, blocked };
     }
